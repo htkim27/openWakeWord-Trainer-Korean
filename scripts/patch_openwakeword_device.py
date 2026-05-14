@@ -29,6 +29,12 @@ FEATURE_SKIP_PATCHED = (
     '"positive_features_test.npy", "negative_features_test.npy"]):'
 )
 
+RESAMPLE_ORIGINAL = '''            if clip_sr != sr:
+                raise ValueError("Error! Clip does not have the correct sample rate!")'''
+RESAMPLE_PATCHED = '''            if clip_sr != sr:
+                clip_data = torchaudio.functional.resample(clip_data, orig_freq=clip_sr, new_freq=sr)
+                clip_sr = sr'''
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -73,6 +79,20 @@ def main() -> int:
 
     if changed:
         train_py.write_text(text, encoding="utf-8")
+
+    data_py = Path(args.openwakeword_dir).resolve() / "openwakeword" / "data.py"
+    if not data_py.exists():
+        raise SystemExit(f"openWakeWord data.py not found: {data_py}")
+
+    data_text = data_py.read_text(encoding="utf-8")
+    if "torchaudio.functional.resample(clip_data" in data_text:
+        print(f"Augmentation resample patch already present: {data_py}", flush=True)
+    else:
+        if RESAMPLE_ORIGINAL not in data_text:
+            raise SystemExit(f"Could not find upstream sample-rate check in {data_py}")
+        data_text = data_text.replace(RESAMPLE_ORIGINAL, RESAMPLE_PATCHED)
+        data_py.write_text(data_text, encoding="utf-8")
+        print(f"Patched openWakeWord augmentation sample-rate resampling: {data_py}", flush=True)
     return 0
 
 

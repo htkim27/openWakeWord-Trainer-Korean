@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 import sys
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -138,6 +140,55 @@ def generated_feature_files(output_dir: Path, model_name: str) -> list[Path]:
         feature_dir / "positive_features_test.npy",
         feature_dir / "negative_features_test.npy",
     ]
+
+
+def generated_clip_dirs(output_dir: Path, model_name: str) -> list[Path]:
+    clip_dir = output_dir / model_name
+    return [
+        clip_dir / "positive_train",
+        clip_dir / "positive_test",
+        clip_dir / "negative_train",
+        clip_dir / "negative_test",
+    ]
+
+
+def normalize_generated_clip_sample_rates(output_dir: Path, model_name: str, sample_rate: int = 16000) -> None:
+    import numpy as np
+    import scipy.io.wavfile
+    import scipy.signal
+
+    changed = 0
+    checked = 0
+    for directory in generated_clip_dirs(output_dir, model_name):
+        if not directory.exists():
+            continue
+        for wav_path in directory.glob("*.wav"):
+            checked += 1
+            try:
+                with wave.open(str(wav_path), "rb") as wav:
+                    current_rate = wav.getframerate()
+            except Exception:
+                continue
+            if current_rate == sample_rate:
+                continue
+
+            current_rate, audio = scipy.io.wavfile.read(wav_path)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+            gcd = math.gcd(int(current_rate), sample_rate)
+            resampled = scipy.signal.resample_poly(
+                audio.astype(np.float32),
+                sample_rate // gcd,
+                int(current_rate) // gcd,
+            )
+            resampled = np.clip(np.rint(resampled), -32768, 32767).astype(np.int16)
+            scipy.io.wavfile.write(wav_path, sample_rate, resampled)
+            changed += 1
+
+    if changed:
+        log(f"Resampled {changed} existing generated clip(s) to {sample_rate} Hz")
+    elif checked:
+        log(f"Generated clips already use {sample_rate} Hz")
 
 
 def train_verifier(args: argparse.Namespace, base_model: Path, model_name: str) -> None:
@@ -274,6 +325,7 @@ def main() -> int:
     if not args.skip_generate:
         run([sys.executable, str(train_py), "--training_config", str(config_path), "--generate_clips"], env=env)
     if not args.skip_augment:
+        normalize_generated_clip_sample_rates(output_dir, model_name)
         run([sys.executable, str(train_py), "--training_config", str(config_path), "--augment_clips"], env=env)
     if not args.skip_train:
         missing_features = [path for path in generated_feature_files(output_dir, model_name) if not path.exists()]
@@ -281,6 +333,7 @@ def main() -> int:
             log("Generated feature files are missing; running augmentation before training:")
             for path in missing_features:
                 log(f"  {path}")
+            normalize_generated_clip_sample_rates(output_dir, model_name)
             run([sys.executable, str(train_py), "--training_config", str(config_path), "--augment_clips"], env=env)
 
         expected_onnx = output_dir / f"{model_name}.onnx"
