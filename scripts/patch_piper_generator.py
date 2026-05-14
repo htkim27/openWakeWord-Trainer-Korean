@@ -235,37 +235,43 @@ def patch_pyproject(root: Path) -> bool:
         print(f"Piper package metadata already includes piper_train: {pyproject}")
         return False
 
-    pattern = re.compile(r"(?P<prefix>include\s*=\s*\[)(?P<body>.*?)(?P<suffix>\])", re.DOTALL)
-    changed = False
+    include_line = 'include = ["piper_sample_generator*", "piper_train*"]'
+    section_match = re.search(r"(?m)^\[tool\.setuptools\.packages\.find\]\s*$", text)
 
-    def add_piper_train(match: re.Match[str]) -> str:
-        nonlocal changed
-        body = match.group("body")
-        if "piper_sample_generator" not in body:
-            return match.group(0)
-        if "piper_train" in body:
-            return match.group(0)
-
-        if "\n" in body:
-            body = body.rstrip()
-            if body.strip() and not body.rstrip().endswith(","):
-                body += ","
-            body += '\n    "piper_train*",\n'
-        else:
-            body = body.strip()
-            if body and not body.endswith(","):
-                body += ","
-            body += ' "piper_train*"'
-
-        changed = True
-        return f"{match.group('prefix')}{body}{match.group('suffix')}"
-
-    patched = pattern.sub(add_piper_train, text)
-    if not changed:
-        raise SystemExit(
-            f"Could not find Piper package include list in {pyproject}; "
-            "expected an include list containing piper_sample_generator"
+    if section_match is None:
+        patched = text.rstrip() + f"\n\n[tool.setuptools.packages.find]\n{include_line}\n"
+    else:
+        next_section = re.search(r"(?m)^\[", text[section_match.end():])
+        section_end = (
+            section_match.end() + next_section.start()
+            if next_section is not None
+            else len(text)
         )
+        section = text[section_match.end():section_end]
+        include_match = re.search(r"(?P<prefix>include\s*=\s*\[)(?P<body>.*?)(?P<suffix>\])", section, re.DOTALL)
+
+        if include_match is None:
+            replacement = text[section_match.start():section_match.end()] + f"\n{include_line}"
+            patched = text[:section_match.start()] + replacement + text[section_match.end():]
+        else:
+            body = include_match.group("body")
+            if "piper_sample_generator" not in body:
+                body = body.strip()
+                if body and not body.endswith(","):
+                    body += ","
+                body += ' "piper_sample_generator*"'
+            if "piper_train" not in body:
+                body = body.rstrip()
+                if body and not body.endswith(","):
+                    body += ","
+                body += ' "piper_train*"'
+
+            section = (
+                section[:include_match.start()]
+                + f"{include_match.group('prefix')}{body}{include_match.group('suffix')}"
+                + section[include_match.end():]
+            )
+            patched = text[:section_match.end()] + section + text[section_end:]
 
     pyproject.write_text(patched, encoding="utf-8")
     print(f"Patched Piper package metadata: {pyproject}")
