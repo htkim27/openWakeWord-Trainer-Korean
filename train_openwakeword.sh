@@ -30,6 +30,7 @@ fi
 
 VENV_DIR="${OWW_VENV_DIR:-$ROOT_DIR/.venv}"
 PIPER_REPO_URL="${OWW_PIPER_REPO_URL:-https://github.com/TaterTotterson/piper-sample-generator.git}"
+PIPER_DIR="$ROOT_DIR/vendor/piper-sample-generator"
 if [[ -n "${OWW_PYTHON_BIN:-}" ]]; then
   PYTHON_BIN="$OWW_PYTHON_BIN"
 elif command -v python3.12 >/dev/null 2>&1; then
@@ -128,31 +129,67 @@ fi
 
 "$PY" scripts/patch_openwakeword_device.py vendor/openwakeword
 
-if [[ ! -d vendor/piper-sample-generator/.git ]]; then
-  git clone "$PIPER_REPO_URL" vendor/piper-sample-generator
+is_current_piper_layout() {
+  [[ -f "$PIPER_DIR/piper_sample_generator/__main__.py" && -d "$PIPER_DIR/piper_train" ]]
+}
+
+refresh_piper_checkout() {
+  local backup_dir model_cache
+  backup_dir="$ROOT_DIR/vendor/piper-sample-generator.backup.$(date +%Y%m%d%H%M%S)"
+  model_cache="$ROOT_DIR/vendor/.piper-model-cache"
+
+  echo "Refreshing stale piper-sample-generator checkout from $PIPER_REPO_URL"
+  mkdir -p "$model_cache"
+  if [[ -d "$PIPER_DIR/models" ]]; then
+    cp -R "$PIPER_DIR/models/." "$model_cache/" 2>/dev/null || true
+  fi
+
+  if [[ -d "$PIPER_DIR" ]]; then
+    mv "$PIPER_DIR" "$backup_dir"
+    echo "Backed up previous Piper checkout to $backup_dir"
+  fi
+
+  if ! git clone "$PIPER_REPO_URL" "$PIPER_DIR"; then
+    if [[ -d "$backup_dir" && ! -d "$PIPER_DIR" ]]; then
+      mv "$backup_dir" "$PIPER_DIR"
+    fi
+    echo "❌ Failed to refresh piper-sample-generator from $PIPER_REPO_URL"
+    exit 1
+  fi
+  if [[ -d "$model_cache" ]]; then
+    mkdir -p "$PIPER_DIR/models"
+    cp -R "$model_cache/." "$PIPER_DIR/models/" 2>/dev/null || true
+  fi
+}
+
+if [[ ! -d "$PIPER_DIR/.git" ]]; then
+  refresh_piper_checkout
 else
-  current_piper_origin="$(git -C vendor/piper-sample-generator remote get-url origin 2>/dev/null || true)"
+  current_piper_origin="$(git -C "$PIPER_DIR" remote get-url origin 2>/dev/null || true)"
   if [[ "$current_piper_origin" != "$PIPER_REPO_URL" ]]; then
     echo "Updating piper-sample-generator origin: $PIPER_REPO_URL"
-    git -C vendor/piper-sample-generator remote set-url origin "$PIPER_REPO_URL"
+    git -C "$PIPER_DIR" remote set-url origin "$PIPER_REPO_URL"
   fi
-  if git -C vendor/piper-sample-generator diff --quiet && git -C vendor/piper-sample-generator diff --cached --quiet; then
-    git -C vendor/piper-sample-generator pull --ff-only origin master || true
+
+  if ! is_current_piper_layout; then
+    refresh_piper_checkout
+  elif git -C "$PIPER_DIR" diff --quiet && git -C "$PIPER_DIR" diff --cached --quiet; then
+    git -C "$PIPER_DIR" pull --ff-only origin master || true
   else
     echo "Skipping piper-sample-generator pull; local trainer patches are already applied"
   fi
 fi
 
-"$PY" scripts/patch_piper_generator.py vendor/piper-sample-generator
+"$PY" scripts/patch_piper_generator.py "$PIPER_DIR"
 "$PY" -m pip install -e vendor/openwakeword
-if ! "$PY" -m pip install -e vendor/piper-sample-generator; then
+if ! "$PY" -m pip install -e "$PIPER_DIR"; then
   echo "WARNING: editable piper-sample-generator install failed; retrying vendored fork without dependency resolution"
-  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e vendor/piper-sample-generator
+  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e "$PIPER_DIR"
 fi
 
 check_piper_generator() {
   local quiet="${1:-0}"
-  "$PY" - "$ROOT_DIR/vendor/piper-sample-generator" "$quiet" <<'PY'
+  "$PY" - "$PIPER_DIR" "$quiet" <<'PY'
 import sys
 from pathlib import Path
 
@@ -175,7 +212,7 @@ PY
 
 if ! check_piper_generator 1 >/dev/null 2>&1; then
   echo "Repairing piper-sample-generator editable install"
-  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e vendor/piper-sample-generator
+  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e "$PIPER_DIR"
   check_piper_generator
 else
   check_piper_generator
