@@ -12,7 +12,9 @@ root of piper-sample-generator. Newer piper-sample-generator releases expose
 the function from ``piper_sample_generator.__main__`` and require the model path
 explicitly. This shim keeps the old import working and uses the bundled
 LibriTTS-R generator model by default. It also lets Piper use CUDA/MPS by
-default while keeping a CPU fallback for Apple Silicon MPS edge cases.
+default while keeping a CPU fallback for Apple Silicon MPS edge cases. Piper
+voices commonly emit 22.05 kHz WAVs, so generated clips are resampled to 16 kHz
+for openWakeWord augmentation.
 """
 from __future__ import annotations
 
@@ -96,11 +98,58 @@ def _looks_like_mps_error(exc: BaseException) -> bool:
     )
 
 
+def _output_dir_from_call(args, kwargs) -> Path | None:
+    output_dir = kwargs.get("output_dir")
+    if output_dir is None and len(args) >= 2:
+        output_dir = args[1]
+    return Path(output_dir) if output_dir is not None else None
+
+
+def _resample_output_wavs(output_dir: Path | None) -> None:
+    if output_dir is None:
+        return
+
+    target_sample_rate = int(os.environ.get("OWW_PIPER_OUTPUT_SAMPLE_RATE", "16000"))
+    if target_sample_rate <= 0:
+        return
+
+    import math
+    import numpy as np
+    import scipy.io.wavfile
+    import scipy.signal
+
+    changed = 0
+    for wav_path in Path(output_dir).glob("*.wav"):
+        sample_rate, audio = scipy.io.wavfile.read(wav_path)
+        if sample_rate == target_sample_rate:
+            continue
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+
+        gcd = math.gcd(int(sample_rate), target_sample_rate)
+        resampled = scipy.signal.resample_poly(
+            audio.astype(np.float32),
+            target_sample_rate // gcd,
+            int(sample_rate) // gcd,
+        )
+        resampled = np.clip(np.rint(resampled), -32768, 32767).astype(np.int16)
+        scipy.io.wavfile.write(wav_path, target_sample_rate, resampled)
+        changed += 1
+
+    if changed:
+        print(
+            f"Resampled {changed} Piper clip(s) to {target_sample_rate} Hz for openWakeWord.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def _call_with_device_visibility(*args, model=None, disable_cuda=False, disable_mps=False, **kwargs):
     import torch
 
     original_cuda_is_available = None
     original_mps_is_available = None
+    output_dir = _output_dir_from_call(args, kwargs)
 
     if disable_cuda:
         original_cuda_is_available = torch.cuda.is_available
@@ -111,7 +160,9 @@ def _call_with_device_visibility(*args, model=None, disable_cuda=False, disable_
         torch.backends.mps.is_available = lambda: False
 
     try:
-        return _generate_samples(*args, model=model or _default_model(), **kwargs)
+        result = _generate_samples(*args, model=model or _default_model(), **kwargs)
+        _resample_output_wavs(output_dir)
+        return result
     finally:
         if original_cuda_is_available is not None:
             torch.cuda.is_available = original_cuda_is_available
@@ -132,7 +183,7 @@ def generate_samples(*args, model=None, **kwargs):
     if policy == "cuda":
         if not cuda_available:
             raise RuntimeError("OWW_PIPER_DEVICE=cuda requested, but CUDA is not available")
-        return _generate_samples(*args, model=model or _default_model(), **kwargs)
+        return _call_with_device_visibility(*args, model=model, **kwargs)
 
     if policy == "mps":
         if not mps_available:
@@ -149,7 +200,7 @@ def generate_samples(*args, model=None, **kwargs):
         )
 
     if cuda_available:
-        return _generate_samples(*args, model=model or _default_model(), **kwargs)
+        return _call_with_device_visibility(*args, model=model, **kwargs)
 
     if mps_available:
         _patch_mps_graph_fuser()

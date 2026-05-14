@@ -13,6 +13,14 @@ FEATURES_URL = "https://huggingface.co/datasets/davidscripka/openwakeword_featur
 VALIDATION_URL = "https://huggingface.co/datasets/davidscripka/openwakeword_features/resolve/main/validation_set_features.npy"
 PIPER_GENERATOR_URL = "https://github.com/TaterTotterson/piper-sample-generator/releases/download/models/en_US-libritts_r-medium.pt"
 PIPER_GENERATOR_CONFIG_URL = PIPER_GENERATOR_URL + ".json"
+OPENWAKEWORD_RELEASE_BASE = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
+OPENWAKEWORD_RESOURCE_MODELS = [
+    "melspectrogram.onnx",
+    "embedding_model.onnx",
+    "melspectrogram.tflite",
+    "embedding_model.tflite",
+    "silero_vad.onnx",
+]
 
 
 def log(message: str) -> None:
@@ -133,6 +141,12 @@ def generate_synthetic_background(out_dir: Path, n_clips: int) -> None:
         scipy.io.wavfile.write(out_dir / f"synthetic_background_{idx:04d}.wav", sample_rate, (audio * 32767).astype(np.int16))
 
 
+def download_openwakeword_resources() -> None:
+    models_dir = ROOT_DIR / "vendor" / "openwakeword" / "openwakeword" / "resources" / "models"
+    for name in OPENWAKEWORD_RESOURCE_MODELS:
+        download_file(f"{OPENWAKEWORD_RELEASE_BASE}/{name}", models_dir / name)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Download reusable openWakeWord training assets.")
     parser.add_argument("--data-dir", default=os.environ.get("OWW_DATA_DIR", str(ROOT_DIR / "data")))
@@ -155,6 +169,7 @@ def main() -> int:
     piper_model = ROOT_DIR / "vendor" / "piper-sample-generator" / "models" / "en_US-libritts_r-medium.pt"
     download_file(PIPER_GENERATOR_URL, piper_model)
     download_file(PIPER_GENERATOR_CONFIG_URL, Path(str(piper_model) + ".json"))
+    download_openwakeword_resources()
 
     if not args.skip_rirs:
         download_mit_rirs(data_dir)
