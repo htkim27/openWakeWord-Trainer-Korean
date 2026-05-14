@@ -130,6 +130,16 @@ def sync_artifacts(output_dir: Path, export_dir: Path, model_name: str, metadata
     return onnx_path if onnx_path.exists() else None
 
 
+def generated_feature_files(output_dir: Path, model_name: str) -> list[Path]:
+    feature_dir = output_dir / model_name
+    return [
+        feature_dir / "positive_features_train.npy",
+        feature_dir / "negative_features_train.npy",
+        feature_dir / "positive_features_test.npy",
+        feature_dir / "negative_features_test.npy",
+    ]
+
+
 def train_verifier(args: argparse.Namespace, base_model: Path, model_name: str) -> None:
     positive_dir = Path(args.positive_dir).resolve()
     negative_dir = Path(args.negative_dir).resolve()
@@ -266,6 +276,13 @@ def main() -> int:
     if not args.skip_augment:
         run([sys.executable, str(train_py), "--training_config", str(config_path), "--augment_clips"], env=env)
     if not args.skip_train:
+        missing_features = [path for path in generated_feature_files(output_dir, model_name) if not path.exists()]
+        if missing_features and args.skip_augment:
+            log("Generated feature files are missing; running augmentation before training:")
+            for path in missing_features:
+                log(f"  {path}")
+            run([sys.executable, str(train_py), "--training_config", str(config_path), "--augment_clips"], env=env)
+
         expected_onnx = output_dir / f"{model_name}.onnx"
         run(
             [sys.executable, str(train_py), "--training_config", str(config_path), "--train_model"],

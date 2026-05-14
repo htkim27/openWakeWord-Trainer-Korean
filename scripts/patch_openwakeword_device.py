@@ -19,6 +19,16 @@ NEGATIVE_BATCH_PATCHED = (
     'max(1, int(config.get("negative_tts_batch_divisor", 7)))),'
 )
 
+FEATURE_SKIP_ORIGINAL = (
+    'if not os.path.exists(os.path.join(feature_save_dir, "positive_features_train.npy")) '
+    'or args.overwrite is True:'
+)
+FEATURE_SKIP_PATCHED = (
+    'if args.overwrite is True or not all(os.path.exists(os.path.join(feature_save_dir, name)) '
+    'for name in ["positive_features_train.npy", "negative_features_train.npy", '
+    '"positive_features_test.npy", "negative_features_test.npy"]):'
+)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -51,6 +61,15 @@ def main() -> int:
         text = text.replace(NEGATIVE_BATCH_ORIGINAL, NEGATIVE_BATCH_PATCHED)
         changed = True
         print(f"Patched openWakeWord negative TTS batch divisor: {train_py}", flush=True)
+
+    if "positive_features_test.npy\", \"negative_features_test.npy" in text:
+        print(f"Feature completeness patch already present: {train_py}", flush=True)
+    else:
+        if FEATURE_SKIP_ORIGINAL not in text:
+            raise SystemExit(f"Could not find upstream feature-skip line in {train_py}")
+        text = text.replace(FEATURE_SKIP_ORIGINAL, FEATURE_SKIP_PATCHED)
+        changed = True
+        print(f"Patched openWakeWord feature completeness check: {train_py}", flush=True)
 
     if changed:
         train_py.write_text(text, encoding="utf-8")
