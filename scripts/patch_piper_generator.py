@@ -224,6 +224,26 @@ def generate_samples(*args, model=None, **kwargs):
 '''
 
 
+def patch_pyproject(root: Path) -> bool:
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+
+    text = pyproject.read_text(encoding="utf-8")
+    if "piper_train*" in text:
+        print(f"Piper package metadata already includes piper_train: {pyproject}")
+        return False
+
+    original = 'include = ["piper_sample_generator*"]'
+    patched = 'include = ["piper_sample_generator*", "piper_train*"]'
+    if original not in text:
+        raise SystemExit(f"Could not find Piper package include list in {pyproject}")
+
+    pyproject.write_text(text.replace(original, patched), encoding="utf-8")
+    print(f"Patched Piper package metadata: {pyproject}")
+    return True
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: patch_piper_generator.py /path/to/piper-sample-generator", file=sys.stderr)
@@ -233,6 +253,8 @@ def main() -> int:
     if not root.exists():
         print(f"piper-sample-generator not found: {root}", file=sys.stderr)
         return 1
+
+    patch_pyproject(root)
 
     target = root / "generate_samples.py"
     if target.exists() and target.read_text(encoding="utf-8") == SHIM:

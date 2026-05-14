@@ -136,38 +136,48 @@ else
     echo "Updating piper-sample-generator origin: $PIPER_REPO_URL"
     git -C vendor/piper-sample-generator remote set-url origin "$PIPER_REPO_URL"
   fi
-  git -C vendor/piper-sample-generator pull --ff-only origin master || true
+  if git -C vendor/piper-sample-generator diff --quiet && git -C vendor/piper-sample-generator diff --cached --quiet; then
+    git -C vendor/piper-sample-generator pull --ff-only origin master || true
+  else
+    echo "Skipping piper-sample-generator pull; local trainer patches are already applied"
+  fi
 fi
 
 "$PY" scripts/patch_piper_generator.py vendor/piper-sample-generator
 "$PY" -m pip install -e vendor/openwakeword
 if ! "$PY" -m pip install -e vendor/piper-sample-generator; then
-  echo "WARNING: editable piper-sample-generator install failed; falling back to PyPI wheel"
-  "$PY" -m pip install --force-reinstall --no-deps "piper-sample-generator==3.2.0"
+  echo "WARNING: editable piper-sample-generator install failed; retrying vendored fork without dependency resolution"
+  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e vendor/piper-sample-generator
 fi
 
 check_piper_generator() {
-  "$PY" - "$ROOT_DIR/vendor/piper-sample-generator" <<'PY'
+  local quiet="${1:-0}"
+  "$PY" - "$ROOT_DIR/vendor/piper-sample-generator" "$quiet" <<'PY'
 import sys
 from pathlib import Path
 
 piper_root = Path(sys.argv[1]).resolve()
+quiet = sys.argv[2] == "1"
 sys.path.insert(0, str(piper_root))
 
 try:
     from generate_samples import generate_samples  # noqa: F401
     import piper_sample_generator
+    import piper_train  # noqa: F401
 except Exception as exc:
-    print(f"Piper sample generator import failed: {exc}", file=sys.stderr)
+    if not quiet:
+        print(f"Piper sample generator import failed: {exc}", file=sys.stderr)
     raise SystemExit(1)
 
 print(f"Piper sample generator ready: {piper_sample_generator.__file__}")
 PY
 }
 
-if ! check_piper_generator; then
-  echo "Repairing piper-sample-generator install from PyPI wheel"
-  "$PY" -m pip install --force-reinstall --no-deps "piper-sample-generator==3.2.0"
+if ! check_piper_generator 1 >/dev/null 2>&1; then
+  echo "Repairing piper-sample-generator editable install"
+  "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e vendor/piper-sample-generator
+  check_piper_generator
+else
   check_piper_generator
 fi
 
