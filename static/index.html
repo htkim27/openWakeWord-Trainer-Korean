@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openWakeWord Trainer</title>
+  <style>
+    :root {
+      --bg: #070709;
+      --panel: rgba(18, 18, 22, 0.8);
+      --panel2: rgba(24, 24, 30, 0.88);
+      --text: #ececf1;
+      --muted: #a9a9b3;
+      --line: rgba(255,255,255,0.1);
+      --orange: #ff8a2a;
+      --orange2: #ffc07f;
+      --ok: #39d4a0;
+      --warn: #ffb020;
+      --err: #ff5757;
+      --shadow: 0 20px 54px rgba(0,0,0,0.45);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 500px at 12% 6%, rgba(255, 138, 42, 0.12), transparent 55%),
+        radial-gradient(720px 420px at 82% 14%, rgba(255, 192, 127, 0.1), transparent 60%),
+        radial-gradient(820px 620px at 50% 100%, rgba(255, 138, 42, 0.06), transparent 55%),
+        linear-gradient(180deg, #050506 0%, #0b0b11 100%);
+    }
+
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 18px 42px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap: 12px; margin-bottom: 14px; }
+    .brand { display:flex; align-items:center; gap:12px; min-width: 0; }
+    .logo {
+      width: 42px; height: 42px; border-radius: 14px;
+      border: 1px solid rgba(255,138,42,0.3);
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,176,102,0.52), rgba(255,138,42,0.24) 44%, rgba(0,0,0,0) 72%),
+        linear-gradient(180deg, rgba(255,138,42,0.22), rgba(255,138,42,0.06));
+      box-shadow: 0 12px 30px rgba(255,138,42,0.1);
+    }
+
+    h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: 0; }
+    h2, h3 { margin: 0 0 10px; font-size: 18px; letter-spacing: 0; }
+    p { margin: 0 0 14px; color: var(--muted); line-height: 1.5; }
+
+    button, input, textarea, select { font: inherit; }
+
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tabBtn {
+      min-width: 140px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+    }
+    .tabBtn.active,
+    .tabBtn[aria-selected="true"] {
+      border-color: rgba(255,138,42,0.42);
+      background: linear-gradient(180deg, rgba(255,138,42,0.2), rgba(255,138,42,0.08));
+      color: var(--orange2);
+    }
+
+    button {
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 0.04s ease, border-color .15s ease, background .15s ease;
+    }
+    button:hover { border-color: rgba(255,138,42,0.36); background: rgba(255,255,255,0.08); }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .primary {
+      border-color: rgba(255,138,42,0.42);
+      background: linear-gradient(180deg, rgba(255,138,42,0.24), rgba(255,138,42,0.12));
+    }
+    .danger { color: #ffd8d8; border-color: rgba(255,87,87,0.36); }
+
+    .grid, .stack { display: grid; gap: 12px; }
+    .two { grid-template-columns: minmax(0, 1fr) minmax(280px, .72fr); }
+    .viewStack[hidden], .hidden { display: none !important; }
+
+    .card,
+    .panel {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--panel), var(--panel2));
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-top: 14px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .studioHero {
+      position: relative;
+      overflow: hidden;
+      min-height: 176px;
+      background:
+        radial-gradient(520px 220px at 88% 0%, rgba(255,192,127,0.16), transparent 62%),
+        linear-gradient(135deg, rgba(255,138,42,0.12), rgba(255,255,255,0.035) 44%, rgba(255,255,255,0.02));
+    }
+    .studioHero.trainerHero {
+      background:
+        radial-gradient(560px 240px at 88% 0%, rgba(255,192,127,0.15), transparent 62%),
+        radial-gradient(360px 220px at 4% 92%, rgba(57,212,160,0.08), transparent 64%),
+        linear-gradient(135deg, rgba(255,138,42,0.12), rgba(255,255,255,0.035) 44%, rgba(255,255,255,0.02));
+    }
+    .studioHero.captureHero {
+      background:
+        radial-gradient(540px 220px at 84% 0%, rgba(137,212,255,0.12), transparent 62%),
+        radial-gradient(420px 260px at 0% 88%, rgba(255,138,42,0.1), transparent 66%),
+        linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,138,42,0.06) 46%, rgba(255,255,255,0.02));
+    }
+    .studioHero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -120px auto;
+      width: 280px;
+      height: 280px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,192,127,0.12);
+      background: radial-gradient(circle, rgba(255,138,42,0.12), transparent 66%);
+      pointer-events: none;
+    }
+    .studioHero > * { position: relative; z-index: 1; }
+    .studioKicker {
+      color: var(--orange2);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .studioHero h3 {
+      font-size: clamp(24px, 4vw, 34px);
+      margin-bottom: 8px;
+    }
+    .studioHero p { max-width: 700px; margin-bottom: 0; }
+    .studioSteps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .studioStepChip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.2);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .studioStepChip b { color: var(--orange2); font-weight: 700; }
+
+    .studioPanel,
+    .studioActionsPanel { margin-top: 0; }
+    .studioActionsPanel {
+      border-color: rgba(255,138,42,0.16);
+      background:
+        linear-gradient(135deg, rgba(255,138,42,0.1), rgba(255,255,255,0.035)),
+        var(--panel2);
+    }
+    .studioPanelHeader,
+    .capturedControlPanel,
+    .sampleLibraryHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .studioPanelTitle {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .studioStepBadge {
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 11px;
+      border: 1px solid rgba(255,138,42,0.36);
+      background: rgba(255,138,42,0.12);
+      color: var(--orange2);
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .studioPanel h3,
+    .studioActionsPanel h3 { margin-bottom: 4px; }
+    .studioPanel p,
+    .studioActionsPanel p { margin-bottom: 0; font-size: 13px; }
+
+    .statGrid,
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .stat {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      box-shadow: none;
+      min-height: 76px;
+    }
+    .label { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .value { font-size: 24px; font-weight: 700; }
+    .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .space { justify-content: space-between; }
+    .muted { color: var(--muted); }
+    .field { display: grid; gap: 6px; min-width: 150px; }
+    .field span { color: var(--muted); font-size: 13px; }
+    .field strong {
+      color: var(--text);
+      font-size: 14px;
+    }
+    input[type="text"], input[type="number"], input[type="password"], textarea, select {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.35);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 15px;
+      outline: none;
+    }
+    input::placeholder,
+    textarea::placeholder { color: rgba(236,236,241,0.36); }
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: rgba(255,138,42,0.44);
+      box-shadow: 0 0 0 3px rgba(255,138,42,0.1);
+    }
+    textarea { min-height: 86px; resize: vertical; }
+    input[type="file"] { width: 100%; color: var(--muted); font-size: 14px; }
+
+    .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+    .form-grid .wide { grid-column: 1 / -1; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.07);
+      padding: 4px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .pill.ok {
+      color: var(--ok);
+      border-color: rgba(57,212,160,0.25);
+      background: rgba(57,212,160,0.08);
+    }
+    .pill.err {
+      color: var(--err);
+      border-color: rgba(255,87,87,0.25);
+      background: rgba(255,87,87,0.08);
+    }
+
+    .dropzone {
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,192,127,0.32);
+      background:
+        linear-gradient(180deg, rgba(255,138,42,0.08), rgba(255,138,42,0.04)),
+        rgba(255,255,255,0.02);
+    }
+
+    .list,
+    .fileList,
+    .capturedList { display: grid; gap: 8px; margin-top: 10px; }
+    .item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .item strong { overflow-wrap: anywhere; }
+    audio { width: 100%; margin-top: 8px; }
+    .consoleCard {
+      display: grid;
+      gap: 12px;
+    }
+    .consoleActions { justify-content: flex-end; }
+    .consoleOverlay {
+      position: fixed;
+      inset: 0;
+      padding: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 5, 10, 0.5);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s ease, visibility 0.18s ease;
+      z-index: 10000;
+    }
+    .consoleOverlay.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .consoleWindow {
+      width: min(1040px, calc(100vw - 36px));
+      height: min(76vh, 760px);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background:
+        linear-gradient(180deg, rgba(17, 20, 28, 0.78), rgba(8, 10, 16, 0.92)),
+        rgba(8, 10, 16, 0.75);
+      box-shadow: 0 28px 84px rgba(0,0,0,0.58);
+      backdrop-filter: blur(18px) saturate(1.12);
+      transform-origin: center;
+    }
+    .consoleWindow.wobble {
+      animation: consoleWobble 560ms cubic-bezier(0.22, 0.85, 0.25, 1);
+    }
+    .consoleHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .consoleTitle {
+      margin: 0;
+      font-size: 18px;
+    }
+    .consoleHint {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .consoleLog {
+      margin: 0;
+      overflow: auto;
+      min-height: 0;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background:
+        linear-gradient(180deg, rgba(6, 9, 14, 0.9), rgba(4, 6, 10, 0.96)),
+        rgba(0,0,0,0.65);
+      padding: 16px;
+      color: #d8e2f1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .consoleLine {
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d8e2f1;
+    }
+    .consoleLine + .consoleLine { margin-top: 2px; }
+    .consoleMuted { color: #93a0b5; }
+    .consoleText { color: #d8e2f1; }
+    .consoleCmd { color: #89d4ff; }
+    .consoleWarn { color: #ffc46f; }
+    .consoleErr { color: #ff8f8f; }
+    .consoleOk { color: #6ee0af; }
+    .consoleSection { color: #ffd89b; font-weight: 600; letter-spacing: 0.02em; }
+    pre { margin: 0; }
+    .accent { color: var(--orange); }
+
+    @keyframes consoleWobble {
+      0%   { transform: translateY(24px) scale(0.93) rotate(-1.2deg); }
+      34%  { transform: translateY(-6px) scale(1.02) rotate(0.85deg); }
+      58%  { transform: translateY(2px) scale(0.99) rotate(-0.45deg); }
+      78%  { transform: translateY(-1px) scale(1.01) rotate(0.2deg); }
+      100% { transform: translateY(0) scale(1) rotate(0deg); }
+    }
+
+    @media (max-width: 720px) {
+      .wrap { padding: 18px 14px 30px; }
+      .topbar,
+      .studioPanelHeader,
+      .capturedControlPanel,
+      .sampleLibraryHeader {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .two, .stats, .form-grid { grid-template-columns: 1fr; }
+      .item { grid-template-columns: 1fr; }
+      .consoleActions,
+      .row.capturedActions { justify-content: stretch; }
+      .consoleOverlay { padding: 12px; }
+      .consoleWindow {
+        width: 100%;
+        height: min(82vh, 760px);
+        padding: 14px;
+      }
+      .consoleHeader {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .consoleActions button,
+      .capturedActions button,
+      .tabBtn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>openWakeWord Trainer Studio</h1>
+          <p>Train ONNX wake words, review captured clips, and export models from one local workspace.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabs" aria-label="Views">
+      <button class="tabBtn active" data-tab="trainer" aria-selected="true">Trainer</button>
+      <button class="tabBtn" data-tab="captured" aria-selected="false">Captured Audio</button>
+      <button class="tabBtn" data-tab="samples" aria-selected="false">Samples</button>
+      <button class="tabBtn" data-tab="artifacts" aria-selected="false">Artifacts</button>
+    </div>
+
+    <main class="stack">
+      <section data-view="trainer" class="viewStack stack">
+        <div class="card studioHero trainerHero">
+          <div>
+            <div class="studioKicker">Training Studio</div>
+            <h3>Build an openWakeWord Model</h3>
+            <p>Use generated speech, personal clips, reviewed negatives, and the openWakeWord pipeline to create a local wake-word model.</p>
+            <div class="studioSteps" aria-label="Training steps">
+              <span class="studioStepChip"><b>1</b> Phrase</span>
+              <span class="studioStepChip"><b>2</b> Samples</span>
+              <span class="studioStepChip"><b>3</b> Train + export</span>
+            </div>
+          </div>
+        </div>
+
+        <section class="statGrid" id="stats"></section>
+
+        <section class="card studioPanel stack">
+          <div class="studioPanelHeader">
+            <div class="studioPanelTitle">
+              <span class="studioStepBadge">1</span>
+              <div>
+                <h3>Training Setup</h3>
+                <p>Set the phrase, sample volume, validation size, and weighting for this run.</p>
+              </div>
+            </div>
+            <span class="pill">ONNX first</span>
+          </div>
+
+          <div class="form-grid">
+            <label class="field wide">
+              <strong>Wake Phrase</strong>
+              <input id="phrase" type="text" placeholder="hey tater" autocomplete="off">
+            </label>
+            <label class="field">
+              <strong>Samples</strong>
+              <input id="samples" type="number" min="20" step="100">
+            </label>
+            <label class="field">
+              <strong>Validation</strong>
+              <input id="validation_samples" type="number" min="20" step="100">
+            </label>
+            <label class="field">
+              <strong>Steps</strong>
+              <input id="steps" type="number" min="100" step="1000">
+            </label>
+            <label class="field">
+              <strong>TTS Batch</strong>
+              <input id="tts_batch_size" type="number" min="1" step="1">
+            </label>
+            <label class="field">
+              <strong>Aug Batch</strong>
+              <input id="augmentation_batch_size" type="number" min="1" step="1">
+            </label>
+            <label class="field">
+              <strong>FP/Hour</strong>
+              <input id="target_fp_per_hour" type="number" min="0.01" step="0.01">
+            </label>
+            <label class="field">
+              <strong>Neg Weight</strong>
+              <input id="max_negative_weight" type="number" min="1" step="100">
+            </label>
+            <label class="field wide">
+              <strong>Custom Negative Phrases</strong>
+              <textarea id="custom_negative_phrases" placeholder="one phrase per line"></textarea>
+            </label>
+          </div>
+
+          <div class="row space">
+            <div class="row">
+              <label class="row"><input id="train_verifier" type="checkbox"> verifier</label>
+              <label class="row"><input id="force_cpu" type="checkbox"> force CPU</label>
+            </div>
+            <div class="row">
+              <button id="stopBtn" class="danger">Stop</button>
+              <button id="trainBtn" class="primary">Start training</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card studioActionsPanel consoleCard">
+          <div class="studioPanelHeader">
+            <div class="studioPanelTitle">
+              <span class="studioStepBadge">2</span>
+              <div>
+                <h3>Run Console</h3>
+                <p>Live output stays put while you inspect earlier lines, then follows again when you jump to latest.</p>
+              </div>
+            </div>
+            <div class="row consoleActions">
+              <span id="logStatus" class="pill">idle</span>
+              <button id="openConsoleBtn" type="button">Open console</button>
+            </div>
+          </div>
+          <div id="runState" class="stat"></div>
+        </section>
+      </section>
+
+      <section data-view="captured" class="viewStack stack hidden">
+        <div class="card studioHero captureHero">
+          <div class="row space">
+            <div>
+              <div class="studioKicker">Capture Review</div>
+              <h3>Captured Audio</h3>
+              <p>Sort clips from sats into personal examples or false-wake negatives for the next model.</p>
+              <div class="studioSteps" aria-label="Captured audio review steps">
+                <span class="studioStepChip"><b>1</b> Review</span>
+                <span class="studioStepChip"><b>2</b> Sort</span>
+                <span class="studioStepChip"><b>3</b> Retrain</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section class="card studioPanel stack">
+          <div class="capturedControlPanel">
+            <div class="studioPanelTitle">
+              <span class="studioStepBadge">1</span>
+              <div>
+                <h3>Review Queue</h3>
+                <p>Approve true wake-word clips or save false wakes as negatives.</p>
+              </div>
+            </div>
+            <div class="row capturedActions">
+              <button onclick="refreshAll()">Refresh inbox</button>
+            </div>
+          </div>
+          <div id="capturedList" class="capturedList"></div>
+        </section>
+      </section>
+
+      <section data-view="samples" class="viewStack stack hidden">
+        <div class="card studioHero">
+          <div>
+            <div class="studioKicker">Sample Library</div>
+            <h3>Personal + Negative Clips</h3>
+            <p>Manage the local audio that gets folded into training.</p>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <section class="card studioPanel stack">
+            <div class="sampleLibraryHeader">
+              <div class="studioPanelTitle">
+                <span class="studioStepBadge">+</span>
+                <div>
+                  <h3>Personal</h3>
+                  <p>Positive clips for the wake phrase.</p>
+                </div>
+              </div>
+              <button class="danger" onclick="clearCollection('personal')">Clear</button>
+            </div>
+            <div class="dropzone">
+              <input type="file" id="personalUpload" multiple accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg,.aac,.opus,.webm">
+              <div class="row"><button onclick="uploadFiles('personal')">Upload</button></div>
+            </div>
+            <div id="personalList" class="list"></div>
+          </section>
+
+          <section class="card studioPanel stack">
+            <div class="sampleLibraryHeader">
+              <div class="studioPanelTitle">
+                <span class="studioStepBadge">-</span>
+                <div>
+                  <h3>Negative</h3>
+                  <p>Confusers and false wakes for harder training.</p>
+                </div>
+              </div>
+              <button class="danger" onclick="clearCollection('negative')">Clear</button>
+            </div>
+            <div class="dropzone">
+              <input type="file" id="negativeUpload" multiple accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg,.aac,.opus,.webm">
+              <div class="row"><button onclick="uploadFiles('negative')">Upload</button></div>
+            </div>
+            <div id="negativeList" class="list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section data-view="artifacts" class="viewStack stack hidden">
+        <div class="card studioHero">
+          <div>
+            <div class="studioKicker">Model Output</div>
+            <h3>Artifacts</h3>
+            <p>Download exported model files and training outputs.</p>
+          </div>
+        </div>
+
+        <section class="card studioPanel stack">
+          <div class="capturedControlPanel">
+            <div class="studioPanelTitle">
+              <span class="studioStepBadge">1</span>
+              <div>
+                <h3>Trained Files</h3>
+                <p>Refresh after a run finishes to pick up new exports.</p>
+              </div>
+            </div>
+            <div class="row capturedActions">
+              <button onclick="refreshAll()">Refresh</button>
+            </div>
+          </div>
+          <div id="artifactList" class="list"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="consoleOverlay" class="consoleOverlay" aria-hidden="true">
+    <div id="consoleWindow" class="consoleWindow" role="dialog" aria-modal="true" aria-labelledby="consoleTitle">
+      <div class="consoleHeader">
+        <div>
+          <h3 id="consoleTitle" class="consoleTitle">Training Console</h3>
+          <p id="consoleHint" class="consoleHint">Live training output appears here with color-coded console styling.</p>
+        </div>
+        <div class="row consoleActions">
+          <button id="jumpLogBtn" type="button">Latest</button>
+          <button id="closeConsoleBtn" type="button">Close</button>
+        </div>
+      </div>
+      <div id="trainLog" class="consoleLog" aria-live="polite" role="log">
+        <div class="consoleLine consoleMuted">(no training started)</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const views = [...document.querySelectorAll("[data-view]")];
+    const tabs = [...document.querySelectorAll("[data-tab]")];
+    const fields = ["samples", "validation_samples", "steps", "tts_batch_size", "augmentation_batch_size", "target_fp_per_hour", "max_negative_weight"];
+    let logAutoFollow = true;
+
+    function isLogNearBottom() {
+      const log = $("trainLog");
+      return log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function consoleLineClass(line) {
+      const trimmed = String(line || "").trim();
+      const lower = trimmed.toLowerCase();
+
+      if (!trimmed) return "consoleMuted";
+      if (trimmed.startsWith("$") || trimmed.startsWith(">")) return "consoleCmd";
+      if (/^={3,}/.test(trimmed) || /^-{3,}/.test(trimmed) || trimmed.includes("=====")) return "consoleSection";
+      if (lower.includes("traceback") || lower.includes("error") || lower.includes("failed") || lower.includes("exception") || lower.includes("cannot ") || lower.includes("exit 1")) return "consoleErr";
+      if (lower.includes("warning") || lower.includes("warn") || lower.includes("skipping")) return "consoleWarn";
+      if (lower.includes("success") || lower.includes("successfully") || lower.includes("finished") || lower.includes("already up to date") || lower.includes("assets ready") || lower.includes("reusing")) return "consoleOk";
+      return "consoleText";
+    }
+
+    function renderConsoleHtml(lines) {
+      const content = Array.isArray(lines) && lines.length ? lines : ["(no training started)"];
+      return content.map(line => {
+        const safe = line ? escapeHtml(line) : "&nbsp;";
+        return `<div class="consoleLine ${consoleLineClass(line)}">${safe}</div>`;
+      }).join("");
+    }
+
+    function setConsoleLog(lines, forceFollow = false) {
+      const log = $("trainLog");
+      const shouldFollow = forceFollow || logAutoFollow || isLogNearBottom();
+      log.innerHTML = renderConsoleHtml(lines);
+      if (shouldFollow) {
+        log.scrollTop = log.scrollHeight;
+        logAutoFollow = true;
+      }
+    }
+
+    function openConsole(wobble = true) {
+      const overlay = $("consoleOverlay");
+      const win = $("consoleWindow");
+      overlay.classList.add("open");
+      overlay.setAttribute("aria-hidden", "false");
+      win.setAttribute("tabindex", "-1");
+      logAutoFollow = true;
+      $("trainLog").scrollTop = $("trainLog").scrollHeight;
+      try {
+        win.focus({ preventScroll: true });
+      } catch (_) {
+        win.focus();
+      }
+      if (wobble) {
+        win.classList.remove("wobble");
+        void win.offsetWidth;
+        win.classList.add("wobble");
+      }
+    }
+
+    function closeConsole() {
+      $("consoleOverlay").classList.remove("open");
+      $("consoleOverlay").setAttribute("aria-hidden", "true");
+    }
+
+    tabs.forEach(btn => btn.addEventListener("click", () => {
+      tabs.forEach(t => {
+        const active = t === btn;
+        t.setAttribute("aria-selected", String(active));
+        t.classList.toggle("active", active);
+      });
+      views.forEach(view => view.classList.toggle("hidden", view.dataset.view !== btn.dataset.tab));
+    }));
+
+    $("trainLog").addEventListener("scroll", () => {
+      logAutoFollow = isLogNearBottom();
+    });
+
+    $("jumpLogBtn").addEventListener("click", () => {
+      logAutoFollow = true;
+      $("trainLog").scrollTop = $("trainLog").scrollHeight;
+    });
+
+    $("openConsoleBtn").addEventListener("click", () => {
+      openConsole(true);
+    });
+
+    $("closeConsoleBtn").addEventListener("click", () => {
+      closeConsole();
+    });
+
+    $("consoleOverlay").addEventListener("click", (event) => {
+      if (event.target === $("consoleOverlay")) closeConsole();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeConsole();
+    });
+
+    function bytes(n) {
+      if (!n) return "0 B";
+      const units = ["B", "KB", "MB", "GB"];
+      let i = 0, v = n;
+      while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+      return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    async function api(url, opts) {
+      const res = await fetch(url, opts);
+      if (!res.ok) {
+        let msg = res.statusText;
+        try { msg = (await res.json()).detail || msg; } catch {}
+        throw new Error(msg);
+      }
+      return res.json();
+    }
+
+    function renderStats(counts) {
+      $("stats").innerHTML = [
+        ["Personal", counts.personal || 0, "accent"],
+        ["Negative", counts.negative || 0, ""],
+        ["Captured", counts.captured || 0, ""],
+        ["Artifacts", counts.artifacts || 0, ""],
+      ].map(([label, value, cls]) => `
+        <div class="stat">
+          <span class="label">${label}</span>
+          <span class="value ${cls}">${value}</span>
+        </div>`).join("");
+    }
+
+    function renderRun(training) {
+      const running = training.running;
+      $("trainBtn").disabled = running;
+      $("stopBtn").disabled = !running;
+      $("logStatus").textContent = running ? "running" : (training.exit_code === null ? "idle" : `exit ${training.exit_code}`);
+      $("logStatus").className = `pill ${running ? "ok" : (training.exit_code ? "err" : "")}`;
+      const started = training.started_at ? new Date(training.started_at * 1000).toLocaleString() : "-";
+      const finished = training.finished_at ? new Date(training.finished_at * 1000).toLocaleString() : "-";
+      $("runState").innerHTML = `
+        <span class="pill ${running ? "ok" : ""}">${running ? "running" : "idle"}</span>
+        <p><strong>Model:</strong> ${training.safe_word || "-"}</p>
+        <p><strong>Started:</strong> ${started}</p>
+        <p><strong>Finished:</strong> ${finished}</p>
+        <p><strong>Log:</strong> ${training.log_path || "-"}</p>`;
+    }
+
+    function renderAudioList(target, kind, items) {
+      $(target).innerHTML = items.length ? items.map(item => `
+        <div class="item">
+          <div>
+            <strong>${item.name}</strong>
+            <div class="row" style="margin-top:6px;"><span class="pill">${bytes(item.size)}</span></div>
+            <audio controls src="${item.url}"></audio>
+          </div>
+          <div class="row">
+            ${kind === "captured" ? `<button onclick="moveCaptured('${item.name}', 'approve')">Good</button><button onclick="moveCaptured('${item.name}', 'false_wake')">False wake</button>` : ""}
+            <button class="danger" onclick="deleteSample('${kind}', '${item.name}')">Delete</button>
+          </div>
+        </div>`).join("") : `<p>No clips.</p>`;
+    }
+
+    function renderArtifacts(items) {
+      $("artifactList").innerHTML = items.length ? items.map(item => `
+        <div class="item">
+          <div><strong>${item.name}</strong><div class="row" style="margin-top:6px;"><span class="pill">${bytes(item.size)}</span></div></div>
+          <a href="${item.url}"><button>Download</button></a>
+        </div>`).join("") : `<p>No artifacts yet.</p>`;
+    }
+
+    async function refreshAll() {
+      const status = await api("/api/status");
+      renderStats(status.counts);
+      renderRun(status.training);
+      renderArtifacts(status.artifacts || []);
+      for (const [field, value] of Object.entries(status.defaults || {})) {
+        if ($(field) && !$(field).value) $(field).value = value;
+      }
+      const [personal, negative, captured] = await Promise.all([
+        api("/api/samples/personal"),
+        api("/api/samples/negative"),
+        api("/api/samples/captured"),
+      ]);
+      renderAudioList("personalList", "personal", personal.items);
+      renderAudioList("negativeList", "negative", negative.items);
+      renderAudioList("capturedList", "captured", captured.items);
+    }
+
+    async function refreshLog() {
+      const data = await api("/api/train/log");
+      renderRun(data.training);
+      setConsoleLog(data.lines || []);
+      return data;
+    }
+
+    async function uploadFiles(kind) {
+      const input = $(`${kind}Upload`);
+      if (!input.files.length) return;
+      const form = new FormData();
+      [...input.files].forEach(file => form.append("files", file));
+      await api(`/api/samples/${kind}/upload`, { method: "POST", body: form });
+      input.value = "";
+      await refreshAll();
+    }
+
+    async function deleteSample(kind, name) {
+      await api(`/api/samples/${kind}/${encodeURIComponent(name)}`, { method: "DELETE" });
+      await refreshAll();
+    }
+
+    async function clearCollection(kind) {
+      if (!confirm(`Clear ${kind} clips?`)) return;
+      await api(`/api/samples/${kind}`, { method: "DELETE" });
+      await refreshAll();
+    }
+
+    async function moveCaptured(name, action) {
+      await api(`/api/captured/${encodeURIComponent(name)}/${action}`, { method: "POST" });
+      await refreshAll();
+    }
+
+    $("trainBtn").addEventListener("click", async () => {
+      const payload = {
+        phrase: $("phrase").value,
+        custom_negative_phrases: $("custom_negative_phrases").value.split(/\n+/).map(s => s.trim()).filter(Boolean),
+        train_verifier: $("train_verifier").checked,
+        force_cpu: $("force_cpu").checked,
+      };
+      fields.forEach(field => payload[field] = $(field).value);
+      try {
+        await api("/api/train", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        await refreshLog();
+        openConsole(true);
+      } catch (err) {
+        setConsoleLog([err.message], true);
+        openConsole(true);
+        alert(err.message);
+      }
+    });
+
+    $("stopBtn").addEventListener("click", async () => {
+      await api("/api/train/stop", { method: "POST" });
+      await refreshLog();
+    });
+
+    refreshAll();
+    refreshLog().then(data => {
+      if (data.training?.running) openConsole(false);
+    }).catch(() => {});
+    setInterval(refreshLog, 1500);
+    setInterval(refreshAll, 8000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+.git
+.venv
+.recorder-venv
+data
+vendor
+output
+logs
+personal_samples
+negative_samples
+captured_audio
+trained_wake_words
+__pycache__
+*.pyc
+.DS_Store

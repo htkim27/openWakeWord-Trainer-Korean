@@ -1,0 +1,197 @@
+# openWakeWord Trainer for Apple Silicon and NVIDIA
+
+Train custom openWakeWord models from a local web UI or CLI, with ONNX as the primary artifact, optional TFLite export when the upstream converter succeeds, and optional verifier training from real positive and false-wake clips.
+
+This project mirrors the shape of the Tater microWakeWord trainers, but the model strategy is different:
+
+- openWakeWord runs a shared mel/embedding backbone and a small wake-word classifier.
+- The best portable classifier artifact is ONNX.
+- Real captured samples are most useful as a second-stage verifier for reducing false wakes in your actual room, mic, and voice setup.
+- Full synthetic model training is still happiest on Linux/NVIDIA. Apple Silicon can run the UI, curate samples, test ONNX models, and run smaller native training jobs when dependencies cooperate.
+
+## Why This Path
+
+The official openWakeWord docs still recommend the automated training notebook for production-ish models, and describe the quick Colab as convenient but weaker in some deployments. The automated flow generates target/adversarial clips, augments them with room/background audio, trains against large negative feature sets, and exports ONNX/TFLite.
+
+Useful upstream references:
+
+- [openWakeWord README](https://github.com/dscripka/openWakeWord#training-new-models)
+- [official automatic training notebook](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb)
+- [official training config](https://github.com/dscripka/openWakeWord/blob/main/examples/custom_model.yml)
+- [piper-sample-generator](https://github.com/rhasspy/piper-sample-generator)
+
+## Quick Start: Web UI
+
+```bash
+./run.sh
+```
+
+Open:
+
+```text
+http://127.0.0.1:8791
+```
+
+The web UI stores:
+
+```text
+personal_samples/       real positive wake-word clips
+negative_samples/       reviewed false wakes and hard negatives
+captured_audio/         inbox for device uploads
+trained_wake_words/     exported .onnx, .tflite, .pkl, and metadata files
+logs/                   training logs
+```
+
+## Train From The CLI
+
+```bash
+./train_openwakeword.sh "hey tater"
+```
+
+Python 3.10+ is required for training because openWakeWord 0.6.0 declares `python_requires >=3.10`; Python 3.11 is recommended. Set `OWW_PYTHON_BIN=/path/to/python3.11` if needed.
+
+On Apple Silicon:
+
+```bash
+brew install python@3.11
+rm -rf .venv
+OWW_PYTHON_BIN=/opt/homebrew/bin/python3.11 ./train_openwakeword.sh "hey tater"
+```
+
+Balanced defaults:
+
+```bash
+./train_openwakeword.sh "hey tater" \
+  --samples 20000 \
+  --validation-samples 2000 \
+  --steps 50000 \
+  --custom-negative-phrase "potato"
+```
+
+Fast smoke test:
+
+```bash
+OWW_NEGATIVE_FEATURES=skip ./train_openwakeword.sh "hey tater" \
+  --samples 1000 \
+  --validation-samples 300 \
+  --steps 3000
+```
+
+Best-result run:
+
+```bash
+OWW_NEGATIVE_FEATURES=full ./train_openwakeword.sh "hey tater" \
+  --samples 50000 \
+  --validation-samples 5000 \
+  --steps 80000 \
+  --target-fp-per-hour 0.2 \
+  --max-negative-weight 1500
+```
+
+The first full run can download many GB of data, including the openWakeWord negative feature file. Keep the `data/` directory around so later runs reuse it. Background audio downloads try the streamed FMA dataset first; if HuggingFace's FMA loader cannot stream on your machine, the trainer generates local 16 kHz fallback background clips and continues. Set `OWW_BACKGROUND_ALLOW_FULL_FMA=1` only if you want to allow the full 7.2 GiB FMA small download.
+
+## NVIDIA Docker
+
+Build:
+
+```bash
+docker build -f dockerfile -t openwakeword-trainer .
+```
+
+Run:
+
+```bash
+docker run --rm -it \
+  --gpus all \
+  --network host \
+  -v "$(pwd)":/workspace \
+  -v "$(pwd)/data":/data \
+  openwakeword-trainer
+```
+
+Open:
+
+```text
+http://localhost:8791
+```
+
+The image is based on `nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04` and explicitly installs the CUDA 12.4 PyTorch wheel, so the upstream trainer should select `cuda:0` when run with `--gpus all`.
+
+## Apple Silicon Notes
+
+Native Apple training is supported as a best-effort path. It uses the same scripts, creates `.venv`, installs the Python stack, and runs the upstream openWakeWord trainer. The launcher patches the vendored trainer so PyTorch selects Apple MPS when available. Set `OWW_ENABLE_MPS=0` or enable `force CPU` in the UI if an operation falls back poorly.
+
+Because upstream automated training historically targeted Linux/Piper, NVIDIA Docker is still the recommended path for the big final run.
+
+Apple is excellent for:
+
+- running the local trainer UI
+- collecting and reviewing clips
+- testing ONNX models
+- training verifier models from personal/negative clips
+- short smoke training runs on CPU or MPS
+
+## Captured Audio Endpoint
+
+Devices can upload raw 16 kHz mono signed 16-bit PCM to:
+
+```text
+POST /api/upload_captured_audio_raw
+```
+
+Uploaded clips land in `captured_audio/`. In the UI, approve good wake-word examples into `personal_samples/` or mark false wakes into `negative_samples/`.
+
+## Verifier Training
+
+After a base `.onnx` model exists, train a verifier from your reviewed clips:
+
+```bash
+.venv/bin/python scripts/train_verifier.py \
+  --base-model trained_wake_words/hey_tater.onnx \
+  --positive-dir personal_samples \
+  --negative-dir negative_samples \
+  --output trained_wake_words/hey_tater_verifier.pkl
+```
+
+This follows openWakeWord's recommended second-stage filter idea: keep the general wake-word model broad, then use real clips to make your deployment less trigger-happy.
+
+## Test A Model
+
+```bash
+.venv/bin/python scripts/test_model.py \
+  --model trained_wake_words/hey_tater.onnx \
+  --wav personal_samples/example.wav
+```
+
+For live microphone testing, use the upstream openWakeWord examples after setup:
+
+```bash
+.venv/bin/python vendor/openwakeword/examples/detect_from_microphone.py \
+  --model-path trained_wake_words/hey_tater.onnx
+```
+
+## Output
+
+Successful training syncs artifacts into:
+
+```text
+trained_wake_words/<model>.onnx
+trained_wake_words/<model>.tflite       # when upstream conversion succeeds
+trained_wake_words/<model>.json         # local metadata
+trained_wake_words/<model>_verifier.pkl # optional
+```
+
+## Important Caveats
+
+- openWakeWord's published pretrained/custom training flow is strongest for English.
+- Threshold tuning matters. The default runtime threshold of `0.5` is a starting point, not a promise.
+- Reviewed false wakes are valuable. Use them for verifier training and as custom negative phrases when they are phrase-like.
+- Big negative datasets improve false-positive behavior, but they cost disk and time.
+
+## Credits
+
+Built around:
+
+- [openWakeWord](https://github.com/dscripka/openWakeWord)
+- [piper-sample-generator](https://github.com/rhasspy/piper-sample-generator)
+- the existing Tater microWakeWord trainer workflow
