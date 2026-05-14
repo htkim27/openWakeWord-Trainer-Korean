@@ -137,7 +137,36 @@ else
 fi
 
 "$PY" scripts/patch_piper_generator.py vendor/piper-sample-generator
-"$PY" -m pip install -e vendor/openwakeword -e vendor/piper-sample-generator
+"$PY" -m pip install -e vendor/openwakeword
+if ! "$PY" -m pip install -e vendor/piper-sample-generator; then
+  echo "WARNING: editable piper-sample-generator install failed; falling back to PyPI wheel"
+  "$PY" -m pip install --force-reinstall --no-deps "piper-sample-generator==3.2.0"
+fi
+
+check_piper_generator() {
+  "$PY" - "$ROOT_DIR/vendor/piper-sample-generator" <<'PY'
+import sys
+from pathlib import Path
+
+piper_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(piper_root))
+
+try:
+    from generate_samples import generate_samples  # noqa: F401
+    import piper_sample_generator
+except Exception as exc:
+    print(f"Piper sample generator import failed: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+print(f"Piper sample generator ready: {piper_sample_generator.__file__}")
+PY
+}
+
+if ! check_piper_generator; then
+  echo "Repairing piper-sample-generator install from PyPI wheel"
+  "$PY" -m pip install --force-reinstall --no-deps "piper-sample-generator==3.2.0"
+  check_piper_generator
+fi
 
 DOWNLOAD_ARGS=()
 if [[ "${OWW_NEGATIVE_FEATURES:-full}" == "full" ]]; then
