@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 
@@ -230,16 +231,43 @@ def patch_pyproject(root: Path) -> bool:
         return False
 
     text = pyproject.read_text(encoding="utf-8")
-    if "piper_train*" in text:
+    if re.search(r"""["']piper_train\*?["']""", text):
         print(f"Piper package metadata already includes piper_train: {pyproject}")
         return False
 
-    original = 'include = ["piper_sample_generator*"]'
-    patched = 'include = ["piper_sample_generator*", "piper_train*"]'
-    if original not in text:
-        raise SystemExit(f"Could not find Piper package include list in {pyproject}")
+    pattern = re.compile(r"(?P<prefix>include\s*=\s*\[)(?P<body>.*?)(?P<suffix>\])", re.DOTALL)
+    changed = False
 
-    pyproject.write_text(text.replace(original, patched), encoding="utf-8")
+    def add_piper_train(match: re.Match[str]) -> str:
+        nonlocal changed
+        body = match.group("body")
+        if "piper_sample_generator" not in body:
+            return match.group(0)
+        if "piper_train" in body:
+            return match.group(0)
+
+        if "\n" in body:
+            body = body.rstrip()
+            if body.strip() and not body.rstrip().endswith(","):
+                body += ","
+            body += '\n    "piper_train*",\n'
+        else:
+            body = body.strip()
+            if body and not body.endswith(","):
+                body += ","
+            body += ' "piper_train*"'
+
+        changed = True
+        return f"{match.group('prefix')}{body}{match.group('suffix')}"
+
+    patched = pattern.sub(add_piper_train, text)
+    if not changed:
+        raise SystemExit(
+            f"Could not find Piper package include list in {pyproject}; "
+            "expected an include list containing piper_sample_generator"
+        )
+
+    pyproject.write_text(patched, encoding="utf-8")
     print(f"Patched Piper package metadata: {pyproject}")
     return True
 
