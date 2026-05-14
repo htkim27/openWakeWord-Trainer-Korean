@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -278,6 +279,43 @@ def patch_pyproject(root: Path) -> bool:
     return True
 
 
+def read_original_root_generator(root: Path) -> str:
+    target = root / "generate_samples.py"
+    if target.exists():
+        text = target.read_text(encoding="utf-8")
+        if "Compatibility entrypoint for openWakeWord's Colab-style trainer" not in text:
+            return text
+
+    if (root / ".git").exists():
+        result = subprocess.run(
+            ["git", "-C", str(root), "show", "HEAD:generate_samples.py"],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout
+
+    raise SystemExit(
+        f"Could not recover original Piper generate_samples.py in {root}. "
+        "Delete vendor/piper-sample-generator and rerun the trainer."
+    )
+
+
+def ensure_package_layout(root: Path) -> bool:
+    package_dir = root / "piper_sample_generator"
+    package_main = package_dir / "__main__.py"
+    if package_main.exists():
+        return False
+
+    source = read_original_root_generator(root)
+    package_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    package_main.write_text(source, encoding="utf-8")
+    print(f"Created Piper package layout for legacy checkout: {package_main}")
+    return True
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: patch_piper_generator.py /path/to/piper-sample-generator", file=sys.stderr)
@@ -288,6 +326,7 @@ def main() -> int:
         print(f"piper-sample-generator not found: {root}", file=sys.stderr)
         return 1
 
+    ensure_package_layout(root)
     patch_pyproject(root)
 
     target = root / "generate_samples.py"
