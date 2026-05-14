@@ -35,6 +35,48 @@ RESAMPLE_PATCHED = '''            if clip_sr != sr:
                 clip_data = torchaudio.functional.resample(clip_data, orig_freq=clip_sr, new_freq=sr)
                 clip_sr = sr'''
 
+OUTPUT_TYPE_REPLACEMENTS = (
+    (
+        '''                mode="per_batch"
+            ),''',
+        '''                mode="per_batch",
+                output_type="tensor"
+            ),''',
+    ),
+    (
+        '''            torch_audiomentations.BandStopFilter(p=augmentation_probabilities["BandStopFilter"], mode="per_batch"),''',
+        '''            torch_audiomentations.BandStopFilter(
+                p=augmentation_probabilities["BandStopFilter"],
+                mode="per_batch",
+                output_type="tensor"
+            ),''',
+    ),
+    (
+        '''            torch_audiomentations.Gain(max_gain_in_db=0, p=augmentation_probabilities["Gain"]),''',
+        '''            torch_audiomentations.Gain(
+                max_gain_in_db=0,
+                p=augmentation_probabilities["Gain"],
+                output_type="tensor"
+            ),''',
+    ),
+    (
+        '''        ])
+    else:
+        augment2 = torch_audiomentations.Compose([''',
+        '''        ], output_type="tensor")
+    else:
+        augment2 = torch_audiomentations.Compose([''',
+    ),
+    (
+        '''        ])
+
+    # Iterate through all clips and augment them''',
+        '''        ], output_type="tensor")
+
+    # Iterate through all clips and augment them''',
+    ),
+)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -85,14 +127,30 @@ def main() -> int:
         raise SystemExit(f"openWakeWord data.py not found: {data_py}")
 
     data_text = data_py.read_text(encoding="utf-8")
+    data_changed = False
     if "torchaudio.functional.resample(clip_data" in data_text:
         print(f"Augmentation resample patch already present: {data_py}", flush=True)
     else:
         if RESAMPLE_ORIGINAL not in data_text:
             raise SystemExit(f"Could not find upstream sample-rate check in {data_py}")
         data_text = data_text.replace(RESAMPLE_ORIGINAL, RESAMPLE_PATCHED)
-        data_py.write_text(data_text, encoding="utf-8")
+        data_changed = True
         print(f"Patched openWakeWord augmentation sample-rate resampling: {data_py}", flush=True)
+
+    if data_text.count('output_type="tensor"') >= 11:
+        print(f"Torch audiomentations output type patch already present: {data_py}", flush=True)
+    else:
+        if 'output_type="tensor"' in data_text:
+            raise SystemExit(f"Partial torch audiomentations output type patch found in {data_py}")
+        for original, patched in OUTPUT_TYPE_REPLACEMENTS:
+            if original not in data_text:
+                raise SystemExit(f"Could not find upstream torch audiomentations pattern in {data_py}")
+            data_text = data_text.replace(original, patched)
+        data_changed = True
+        print(f"Patched torch audiomentations output_type compatibility: {data_py}", flush=True)
+
+    if data_changed:
+        data_py.write_text(data_text, encoding="utf-8")
     return 0
 
 
