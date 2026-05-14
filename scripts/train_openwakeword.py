@@ -83,6 +83,7 @@ def make_config(args: argparse.Namespace, model_name: str, output_dir: Path) -> 
         "n_samples": args.samples,
         "n_samples_val": args.validation_samples,
         "tts_batch_size": args.tts_batch_size,
+        "negative_tts_batch_divisor": args.negative_tts_batch_divisor,
         "augmentation_batch_size": args.augmentation_batch_size,
         "piper_sample_generator_path": str(piper_dir),
         "output_dir": str(output_dir),
@@ -177,6 +178,12 @@ def main() -> int:
     parser.add_argument("--validation-samples", type=int, default=int(os.environ.get("OWW_DEFAULT_VALIDATION_SAMPLES", "2000")))
     parser.add_argument("--steps", type=int, default=int(os.environ.get("OWW_DEFAULT_STEPS", "50000")))
     parser.add_argument("--tts-batch-size", type=int, default=int(os.environ.get("OWW_DEFAULT_TTS_BATCH", "50")))
+    parser.add_argument(
+        "--negative-tts-batch-divisor",
+        type=int,
+        default=int(os.environ.get("OWW_NEGATIVE_TTS_DIVISOR", "7")),
+        help="Divide TTS batch size by this for adversarial negative clip generation; lower is faster but uses more memory.",
+    )
     parser.add_argument("--augmentation-batch-size", type=int, default=int(os.environ.get("OWW_DEFAULT_AUG_BATCH", "16")))
     parser.add_argument("--augmentation-rounds", type=int, default=1)
     parser.add_argument("--positive-batch", type=int, default=50)
@@ -203,6 +210,8 @@ def main() -> int:
     parser.add_argument("--force-cpu", action="store_true")
     parser.add_argument("--train-verifier", action="store_true")
     args = parser.parse_args()
+    if args.negative_tts_batch_divisor < 1:
+        raise SystemExit("--negative-tts-batch-divisor must be 1 or greater")
 
     model_name = safe_name(args.model_name or args.phrase)
     output_dir = Path(args.output_root).resolve() / model_name
@@ -245,6 +254,12 @@ def main() -> int:
     os.environ.update({key: value for key, value in env.items() if key in {"OWW_ENABLE_MPS", "CUDA_VISIBLE_DEVICES"}})
     log_torch_devices()
     log(f"Piper generator device policy: {env.get('OWW_PIPER_DEVICE', 'auto')}")
+    negative_tts_batch = max(1, args.tts_batch_size // args.negative_tts_batch_divisor)
+    log(
+        "Piper negative TTS batch: "
+        f"{negative_tts_batch} (tts_batch_size={args.tts_batch_size}, "
+        f"divisor={args.negative_tts_batch_divisor})"
+    )
 
     if not args.skip_generate:
         run([sys.executable, str(train_py), "--training_config", str(config_path), "--generate_clips"], env=env)

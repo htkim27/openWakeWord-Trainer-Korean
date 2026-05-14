@@ -68,6 +68,14 @@ Balanced defaults:
   --custom-negative-phrase "potato"
 ```
 
+Adversarial negative clips default to `tts_batch_size // 7`, matching upstream openWakeWord. On Apple Silicon MPS you can lower the divisor for larger, faster negative batches:
+
+```bash
+./train_openwakeword.sh "hey tater" \
+  --tts-batch-size 50 \
+  --negative-tts-batch-divisor 4
+```
+
 Fast smoke test:
 
 ```bash

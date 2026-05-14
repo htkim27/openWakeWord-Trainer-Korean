@@ -13,6 +13,7 @@ Common options are passed through to scripts/train_openwakeword.py:
   --samples 20000
   --validation-samples 2000
   --steps 50000
+  --negative-tts-batch-divisor 7
   --custom-negative-phrase "phrase"
   --train-verifier
 
@@ -21,6 +22,7 @@ Environment:
   OWW_DOWNLOAD_BACKGROUND=1|0       default: 1
   OWW_DOWNLOAD_RIRS=1|0             default: 1
   OWW_PIPER_DEVICE=auto|mps|cuda|cpu default: auto
+  OWW_NEGATIVE_TTS_DIVISOR=7        lower is faster but uses more memory
   OWW_FORCE_CPU=1                   disable CUDA/MPS visibility
 EOF
   exit 1

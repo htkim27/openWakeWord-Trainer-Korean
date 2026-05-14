@@ -497,6 +497,10 @@
               <input id="tts_batch_size" type="number" min="1" step="1">
             </label>
             <label class="field">
+              <strong>Neg TTS Divisor</strong>
+              <input id="negative_tts_batch_divisor" type="number" min="1" step="1">
+            </label>
+            <label class="field">
               <strong>Aug Batch</strong>
               <input id="augmentation_batch_size" type="number" min="1" step="1">
             </label>
@@ -675,7 +679,7 @@
     const $ = (id) => document.getElementById(id);
     const views = [...document.querySelectorAll("[data-view]")];
     const tabs = [...document.querySelectorAll("[data-tab]")];
-    const fields = ["samples", "validation_samples", "steps", "tts_batch_size", "augmentation_batch_size", "target_fp_per_hour", "max_negative_weight"];
+    const fields = ["samples", "validation_samples", "steps", "tts_batch_size", "negative_tts_batch_divisor", "augmentation_batch_size", "target_fp_per_hour", "max_negative_weight"];
     let logAutoFollow = true;
 
     function isLogNearBottom() {
