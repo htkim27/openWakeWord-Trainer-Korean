@@ -119,7 +119,7 @@ The image is based on `nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04` and explicitl
 
 ## Apple Silicon Notes
 
-Native Apple training is supported as a best-effort path. It uses the same scripts, creates `.venv`, installs the Python stack, and runs the upstream openWakeWord trainer. The launcher patches the vendored trainer so PyTorch selects Apple MPS when available. Set `OWW_ENABLE_MPS=0` or enable `force CPU` in the UI if an operation falls back poorly.
+Native Apple training is supported as a best-effort path. It uses the same scripts, creates `.venv`, installs the Python stack, and runs the upstream openWakeWord trainer. The launcher patches the vendored trainer so PyTorch selects Apple MPS when available, and Piper sample generation now uses `OWW_PIPER_DEVICE=auto` so it prefers CUDA/MPS before falling back to CPU. Set `OWW_ENABLE_MPS=0`, `OWW_PIPER_DEVICE=cpu`, or enable `force CPU` in the UI if an operation falls back poorly.
 
 Because upstream automated training historically targeted Linux/Piper, NVIDIA Docker is still the recommended path for the big final run.
 

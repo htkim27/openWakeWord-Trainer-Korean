@@ -233,14 +233,18 @@ def main() -> int:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+    # deep-phonemizer's checkpoint predates PyTorch 2.6's weights_only default.
+    env.setdefault("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
     if args.force_cpu:
         env["CUDA_VISIBLE_DEVICES"] = ""
         env["HIP_VISIBLE_DEVICES"] = ""
         env["ROCR_VISIBLE_DEVICES"] = ""
         env["OWW_ENABLE_MPS"] = "0"
+        env["OWW_PIPER_DEVICE"] = "cpu"
 
     os.environ.update({key: value for key, value in env.items() if key in {"OWW_ENABLE_MPS", "CUDA_VISIBLE_DEVICES"}})
     log_torch_devices()
+    log(f"Piper generator device policy: {env.get('OWW_PIPER_DEVICE', 'auto')}")
 
     if not args.skip_generate:
         run([sys.executable, str(train_py), "--training_config", str(config_path), "--generate_clips"], env=env)

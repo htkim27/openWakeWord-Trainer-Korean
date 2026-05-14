@@ -20,6 +20,7 @@ Environment:
   OWW_NEGATIVE_FEATURES=full|skip   default: full
   OWW_DOWNLOAD_BACKGROUND=1|0       default: 1
   OWW_DOWNLOAD_RIRS=1|0             default: 1
+  OWW_PIPER_DEVICE=auto|mps|cuda|cpu default: auto
   OWW_FORCE_CPU=1                   disable CUDA/MPS visibility
 EOF
   exit 1
