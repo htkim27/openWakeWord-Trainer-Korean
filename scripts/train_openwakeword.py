@@ -217,6 +217,49 @@ def train_verifier(args: argparse.Namespace, base_model: Path, model_name: str) 
     run(cmd)
 
 
+def run_calibration(args: argparse.Namespace, onnx_path: Path, model_name: str, metadata_path: Path) -> None:
+    positive_dirs = [
+        Path(args.positive_dir).resolve(),
+        Path(args.output_root).resolve() / model_name / model_name / "positive_test",
+    ]
+    negative_dirs = [
+        Path(args.negative_dir).resolve(),
+        Path(args.output_root).resolve() / model_name / model_name / "negative_test",
+    ]
+    if not any(path.exists() and any(path.glob("*.wav")) for path in negative_dirs):
+        log("Skipping calibration: no negative WAV clips found")
+        return
+
+    cmd = [
+        sys.executable,
+        str(ROOT_DIR / "scripts" / "calibrate_model.py"),
+        "--model",
+        str(onnx_path),
+        "--framework",
+        "onnx",
+        "--patience",
+        str(args.calibration_patience),
+        "--positive-limit",
+        str(args.calibration_positive_limit),
+        "--negative-limit",
+        str(args.calibration_negative_limit),
+        "--metadata-json",
+        str(metadata_path),
+    ]
+    for directory in positive_dirs:
+        if directory.exists():
+            cmd.extend(["--positive-dir", str(directory)])
+    for directory in negative_dirs:
+        if directory.exists():
+            cmd.extend(["--negative-dir", str(directory)])
+
+    log("")
+    log("$ " + " ".join(cmd))
+    result = subprocess.run(cmd, cwd=str(ROOT_DIR), env=os.environ.copy())
+    if result.returncode != 0:
+        log(f"WARNING: calibration exited {result.returncode}; model artifact still exists at {onnx_path}")
+
+
 def log_torch_devices() -> None:
     try:
         import torch
@@ -268,6 +311,10 @@ def main() -> int:
     parser.add_argument("--skip-generate", action="store_true")
     parser.add_argument("--skip-augment", action="store_true")
     parser.add_argument("--skip-train", action="store_true")
+    parser.add_argument("--skip-calibration", action="store_true")
+    parser.add_argument("--calibration-positive-limit", type=int, default=int(os.environ.get("OWW_CALIBRATION_POSITIVE_LIMIT", "200")))
+    parser.add_argument("--calibration-negative-limit", type=int, default=int(os.environ.get("OWW_CALIBRATION_NEGATIVE_LIMIT", "500")))
+    parser.add_argument("--calibration-patience", type=int, default=int(os.environ.get("OWW_CALIBRATION_PATIENCE", "3")))
     parser.add_argument("--force-cpu", action="store_true")
     parser.add_argument("--train-verifier", action="store_true")
     args = parser.parse_args()
@@ -343,7 +390,10 @@ def main() -> int:
             allow_onnx_failure=expected_onnx,
         )
 
-    onnx_path = sync_artifacts(output_dir, Path(args.export_dir).resolve(), model_name, metadata)
+    export_dir = Path(args.export_dir).resolve()
+    onnx_path = sync_artifacts(output_dir, export_dir, model_name, metadata)
+    if onnx_path and not args.skip_calibration:
+        run_calibration(args, onnx_path, model_name, export_dir / f"{model_name}.json")
     if args.train_verifier and onnx_path:
         train_verifier(args, onnx_path, model_name)
 

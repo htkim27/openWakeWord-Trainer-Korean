@@ -171,6 +171,19 @@ This follows openWakeWord's recommended second-stage filter idea: keep the gener
   --wav personal_samples/example.wav
 ```
 
+For a deployment check, calibrate the model against reviewed false wakes and generated negative test clips:
+
+```bash
+.venv/bin/python scripts/calibrate_model.py \
+  --model trained_wake_words/hey_tater.onnx \
+  --positive-dir personal_samples \
+  --negative-dir negative_samples \
+  --negative-dir output/hey_tater/hey_tater/negative_test \
+  --metadata-json trained_wake_words/hey_tater.json
+```
+
+The trainer runs this automatically after a successful ONNX export when negative clips are available. Use the reported `recommended_threshold` and `recommended_patience` in your runtime before deploying the model broadly.
+
 For live microphone testing, use the upstream openWakeWord examples after setup:
 
 ```bash
@@ -193,6 +206,7 @@ trained_wake_words/<model>_verifier.pkl # optional
 
 - openWakeWord's published pretrained/custom training flow is strongest for English.
 - Threshold tuning matters. The default runtime threshold of `0.5` is a starting point, not a promise.
+- If a custom model triggers repeatedly on silence or room audio, immediately raise the runtime threshold near `0.95`, increase patience to `3` or `4`, and collect those false-wake clips into `negative_samples/` before retraining or training a verifier.
 - Reviewed false wakes are valuable. Use them for verifier training and as custom negative phrases when they are phrase-like.
 - Big negative datasets improve false-positive behavior, but they cost disk and time.
 
