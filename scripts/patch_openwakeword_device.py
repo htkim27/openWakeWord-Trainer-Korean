@@ -29,6 +29,9 @@ FEATURE_SKIP_PATCHED = (
     '"positive_features_test.npy", "negative_features_test.npy"]):'
 )
 
+STORE_TRUE_DEFAULT_ORIGINAL = '        default="False",'
+STORE_TRUE_DEFAULT_PATCHED = "        default=False,"
+
 TRAIN_LOADER_ORIGINAL = '''        n_cpus = os.cpu_count()
         if n_cpus is None:
             n_cpus = 1
@@ -139,6 +142,13 @@ def main() -> int:
         text = text.replace(FEATURE_SKIP_ORIGINAL, FEATURE_SKIP_PATCHED)
         changed = True
         print(f"Patched openWakeWord feature completeness check: {train_py}", flush=True)
+
+    if STORE_TRUE_DEFAULT_ORIGINAL in text:
+        text = text.replace(STORE_TRUE_DEFAULT_ORIGINAL, STORE_TRUE_DEFAULT_PATCHED)
+        changed = True
+        print(f"Patched openWakeWord store_true defaults: {train_py}", flush=True)
+    else:
+        print(f"openWakeWord store_true defaults already patched: {train_py}", flush=True)
 
     if "OWW_TRAIN_NUM_WORKERS" in text:
         print(f"Mac DataLoader worker patch already present: {train_py}", flush=True)
