@@ -29,6 +29,27 @@ FEATURE_SKIP_PATCHED = (
     '"positive_features_test.npy", "negative_features_test.npy"]):'
 )
 
+TRAIN_LOADER_ORIGINAL = '''        n_cpus = os.cpu_count()
+        if n_cpus is None:
+            n_cpus = 1
+        else:
+            n_cpus = n_cpus//2
+        X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
+                                              batch_size=None, num_workers=n_cpus, prefetch_factor=16)'''
+TRAIN_LOADER_PATCHED = '''        n_cpus = os.cpu_count()
+        if n_cpus is None:
+            n_cpus = 1
+        else:
+            n_cpus = n_cpus//2
+        if sys.platform == "darwin":
+            n_cpus = 0
+        n_cpus = int(os.environ.get("OWW_TRAIN_NUM_WORKERS", n_cpus))
+        train_loader_kwargs = {"batch_size": None, "num_workers": n_cpus}
+        if n_cpus > 0:
+            train_loader_kwargs["prefetch_factor"] = 16
+        X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
+                                              **train_loader_kwargs)'''
+
 RESAMPLE_ORIGINAL = '''            if clip_sr != sr:
                 raise ValueError("Error! Clip does not have the correct sample rate!")'''
 RESAMPLE_PATCHED = '''            if clip_sr != sr:
@@ -118,6 +139,15 @@ def main() -> int:
         text = text.replace(FEATURE_SKIP_ORIGINAL, FEATURE_SKIP_PATCHED)
         changed = True
         print(f"Patched openWakeWord feature completeness check: {train_py}", flush=True)
+
+    if "OWW_TRAIN_NUM_WORKERS" in text:
+        print(f"Mac DataLoader worker patch already present: {train_py}", flush=True)
+    else:
+        if TRAIN_LOADER_ORIGINAL not in text:
+            raise SystemExit(f"Could not find upstream training DataLoader block in {train_py}")
+        text = text.replace(TRAIN_LOADER_ORIGINAL, TRAIN_LOADER_PATCHED)
+        changed = True
+        print(f"Patched openWakeWord training DataLoader workers for macOS spawn: {train_py}", flush=True)
 
     if changed:
         train_py.write_text(text, encoding="utf-8")
