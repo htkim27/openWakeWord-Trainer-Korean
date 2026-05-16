@@ -7,6 +7,7 @@
 <h3 align="center">
   <a href="https://taterassistant.com">taterassistant.com</a>
 </h3>
+
 # openWakeWord Trainer for Apple Silicon and NVIDIA
 
 Train custom openWakeWord models from a local web UI or CLI, with ONNX as the primary artifact, optional TFLite export when the upstream converter succeeds, and optional verifier training from real positive and false-wake clips.
