@@ -22,13 +22,16 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT_DIR = Path(__file__).resolve().parent
-STATIC_DIR = ROOT_DIR / "static"
-PERSONAL_DIR = ROOT_DIR / "personal_samples"
-NEGATIVE_DIR = ROOT_DIR / "negative_samples"
-CAPTURED_DIR = ROOT_DIR / "captured_audio"
-TRIM_HISTORY_DIR = ROOT_DIR / "trim_history"
-TRAINED_DIR = ROOT_DIR / "trained_wake_words"
-LOG_DIR = ROOT_DIR / "logs"
+DATA_DIR = Path(os.environ.get("OWW_DATA_DIR", str(ROOT_DIR))).resolve()
+STATIC_DIR = Path(os.environ.get("STATIC_DIR", str(ROOT_DIR / "static"))).resolve()
+PERSONAL_DIR = Path(os.environ.get("OWW_PERSONAL_DIR", str(DATA_DIR / "personal_samples"))).resolve()
+NEGATIVE_DIR = Path(os.environ.get("OWW_NEGATIVE_DIR", str(DATA_DIR / "negative_samples"))).resolve()
+CAPTURED_DIR = Path(os.environ.get("OWW_CAPTURED_DIR", str(DATA_DIR / "captured_audio"))).resolve()
+TRIM_HISTORY_DIR = Path(os.environ.get("OWW_TRIM_HISTORY_DIR", str(DATA_DIR / "trim_history"))).resolve()
+TRAINED_DIR = Path(
+    os.environ.get("OWW_TRAINED_DIR", os.environ.get("OWW_EXPORT_DIR", str(DATA_DIR / "trained_wake_words")))
+).resolve()
+LOG_DIR = Path(os.environ.get("OWW_LOG_DIR", str(DATA_DIR / "logs"))).resolve()
 TRAIN_SCRIPT = Path(os.environ.get("TRAIN_SCRIPT", str(ROOT_DIR / "train_openwakeword.sh"))).resolve()
 
 TARGET_SAMPLE_RATE = 16000

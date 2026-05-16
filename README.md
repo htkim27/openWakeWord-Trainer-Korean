@@ -121,8 +121,7 @@ Run:
 ```bash
 docker run --rm -it \
   --gpus all \
-  --network host \
-  -v "$(pwd)":/workspace \
+  -p 8791:8791 \
   -v "$(pwd)/data":/data \
   openwakeword-trainer
 ```
@@ -133,7 +132,9 @@ Open:
 http://localhost:8791
 ```
 
-The image is based on `nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04` and explicitly installs the CUDA 12.4 PyTorch wheel, so the upstream trainer should select `cuda:0` when run with `--gpus all`.
+The Docker image follows the smaller microWakeWord trainer pattern: it ships only the app, Python, and system tools. UI and training dependencies are installed into `/data/.recorder-venv` and `/data/.venv` on first run, so rebuilding the image stays small and the heavy Python stack is cached in your mounted `data/` directory.
+
+By default Docker sets `OWW_TORCH_CUDA=cu124`, so the training venv installs the CUDA 12.4 PyTorch wheels and the upstream trainer should select `cuda:0` when run with `--gpus all`. For a CPU-only container, pass `-e OWW_FORCE_CPU=1 -e OWW_TORCH_CUDA=`.
 
 ## Apple Silicon Notes
 

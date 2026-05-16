@@ -1,41 +1,41 @@
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV REC_HOST=0.0.0.0
 ENV REC_PORT=8791
 ENV OWW_DATA_DIR=/data
+ENV REC_VENV_DIR=/data/.recorder-venv
+ENV OWW_VENV_DIR=/data/.venv
+ENV OWW_OUTPUT_ROOT=/data/output
+ENV OWW_EXPORT_DIR=/data/trained_wake_words
+ENV OWW_OPENWAKEWORD_DIR=/data/vendor/openwakeword
+ENV OWW_PIPER_DIR=/data/vendor/piper-sample-generator
+ENV OWW_TORCH_VERSION=2.6.0
+ENV OWW_TORCH_CUDA=cu124
+ENV PIP_CACHE_DIR=/data/.cache/pip
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
     ca-certificates \
     curl \
     ffmpeg \
+    gcc \
     git \
+    libc6-dev \
+    libgomp1 \
     libsndfile1 \
-    python3 \
-    python3-pip \
-    python3-venv \
     wget \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data
 
-WORKDIR /workspace
+WORKDIR /opt/openwakeword-trainer
 
-COPY requirements-ui.txt requirements-train.txt ./
-ARG TORCH_VERSION=2.6.0
-ARG TORCH_CUDA=cu124
-RUN python3 -m venv /opt/openwakeword-trainer \
-  && /opt/openwakeword-trainer/bin/python -m pip install -U pip setuptools wheel \
-  && /opt/openwakeword-trainer/bin/python -m pip install -r requirements-ui.txt -r requirements-train.txt \
-  && /opt/openwakeword-trainer/bin/python -m pip install --force-reinstall --index-url https://download.pytorch.org/whl/${TORCH_CUDA} \
-      "torch==${TORCH_VERSION}+${TORCH_CUDA}" "torchaudio==${TORCH_VERSION}+${TORCH_CUDA}" \
-  && /opt/openwakeword-trainer/bin/python -m pip install "tensorflow-cpu>=2.15,<2.17"
-
-ENV REC_VENV_DIR=/opt/openwakeword-trainer
-ENV OWW_VENV_DIR=/opt/openwakeword-trainer
-ENV PATH=/opt/openwakeword-trainer/bin:$PATH
-
-COPY . .
+COPY --chmod=0755 run.sh train_openwakeword.sh ./
+COPY requirements-ui.txt requirements-train.txt trainer_server.py README.md ./
+COPY scripts/ scripts/
+COPY static/ static/
 
 EXPOSE 8791
 
-CMD ["./run.sh"]
+CMD ["/bin/bash", "-lc", "/opt/openwakeword-trainer/run.sh"]

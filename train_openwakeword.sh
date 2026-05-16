@@ -24,13 +24,28 @@ Environment:
   OWW_PIPER_DEVICE=auto|mps|cuda|cpu default: auto
   OWW_NEGATIVE_TTS_DIVISOR=7        lower is faster but uses more memory
   OWW_FORCE_CPU=1                   disable CUDA/MPS visibility
+  OWW_DATA_DIR=/data                persistent Docker data root
+  OWW_TORCH_CUDA=cu124              install CUDA PyTorch wheels in the training venv
 EOF
   exit 1
 fi
 
-VENV_DIR="${OWW_VENV_DIR:-$ROOT_DIR/.venv}"
+if [[ -n "${OWW_DATA_DIR:-}" ]]; then
+  DATA_ROOT="$OWW_DATA_DIR"
+  ASSET_DIR="${OWW_ASSET_DIR:-$DATA_ROOT}"
+else
+  DATA_ROOT="$ROOT_DIR"
+  ASSET_DIR="${OWW_ASSET_DIR:-$ROOT_DIR/data}"
+fi
+VENDOR_DIR="${OWW_VENDOR_DIR:-$DATA_ROOT/vendor}"
+OPENWAKEWORD_DIR="${OWW_OPENWAKEWORD_DIR:-$VENDOR_DIR/openwakeword}"
+PIPER_DIR="${OWW_PIPER_DIR:-$VENDOR_DIR/piper-sample-generator}"
+OUTPUT_ROOT="${OWW_OUTPUT_ROOT:-$DATA_ROOT/output}"
+EXPORT_DIR="${OWW_EXPORT_DIR:-${OWW_TRAINED_DIR:-$DATA_ROOT/trained_wake_words}}"
+POSITIVE_DIR="${OWW_PERSONAL_DIR:-$DATA_ROOT/personal_samples}"
+NEGATIVE_DIR="${OWW_NEGATIVE_DIR:-$DATA_ROOT/negative_samples}"
+VENV_DIR="${OWW_VENV_DIR:-$DATA_ROOT/.venv}"
 PIPER_REPO_URL="${OWW_PIPER_REPO_URL:-https://github.com/TaterTotterson/piper-sample-generator.git}"
-PIPER_DIR="$ROOT_DIR/vendor/piper-sample-generator"
 if [[ -n "${OWW_PYTHON_BIN:-}" ]]; then
   PYTHON_BIN="$OWW_PYTHON_BIN"
 elif command -v python3.12 >/dev/null 2>&1; then
@@ -47,11 +62,23 @@ else
   PYTHON_BIN=""
 fi
 PY="$VENV_DIR/bin/python"
-MPLCONFIGDIR="${MPLCONFIGDIR:-$ROOT_DIR/.cache/matplotlib}"
+MPLCONFIGDIR="${MPLCONFIGDIR:-$DATA_ROOT/.cache/matplotlib}"
 PYTHONWARNINGS="${PYTHONWARNINGS:-ignore:pkg_resources is deprecated as an API:UserWarning}"
+TRAIN_DEPS_KEY="cpu"
+if [[ -n "${OWW_TORCH_CUDA:-}" && "${OWW_FORCE_CPU:-0}" != "1" ]]; then
+  TRAIN_DEPS_KEY="${OWW_TORCH_VERSION:-2.6.0}+${OWW_TORCH_CUDA}"
+fi
 
-mkdir -p vendor data trained_wake_words logs "$MPLCONFIGDIR"
-export MPLCONFIGDIR PYTHONWARNINGS
+mkdir -p \
+  "$ASSET_DIR" \
+  "$VENDOR_DIR" \
+  "$OUTPUT_ROOT" \
+  "$EXPORT_DIR" \
+  "$POSITIVE_DIR" \
+  "$NEGATIVE_DIR" \
+  "$DATA_ROOT/logs" \
+  "$MPLCONFIGDIR"
+export MPLCONFIGDIR PYTHONWARNINGS OWW_OPENWAKEWORD_DIR="$OPENWAKEWORD_DIR" OWW_PIPER_DIR="$PIPER_DIR"
 
 if [[ -z "$PYTHON_BIN" ]]; then
   echo "❌ Training requires Python 3.10+ because openWakeWord 0.6.0 declares python_requires >=3.10."
@@ -104,11 +131,56 @@ case "$VENV_PYTHON_VERSION" in
     ;;
 esac
 
-if [[ ! -f "$VENV_DIR/.train_deps_installed" ]]; then
-  "$PY" -m pip install -U pip wheel
-  "$PY" -m pip install -r requirements-train.txt
+install_cuda_torch() {
+  local torch_version torch_cuda
+  torch_version="${OWW_TORCH_VERSION:-2.6.0}"
+  torch_cuda="${OWW_TORCH_CUDA:-}"
+  if [[ -z "$torch_cuda" || "${OWW_FORCE_CPU:-0}" == "1" ]]; then
+    return
+  fi
+
+  echo "Installing CUDA PyTorch wheels: torch ${torch_version}+${torch_cuda}"
+  "$PY" -m pip install --index-url "https://download.pytorch.org/whl/${torch_cuda}" \
+    "torch==${torch_version}+${torch_cuda}" \
+    "torchaudio==${torch_version}+${torch_cuda}"
+}
+
+write_filtered_train_requirements() {
+  local filtered="$VENV_DIR/requirements-train.no-torch.txt"
+  "$PY" - "$ROOT_DIR/requirements-train.txt" "$filtered" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+skip = {"torch", "torchaudio"}
+lines = []
+
+for line in source.read_text(encoding="utf-8").splitlines():
+    stripped = line.strip()
+    match = re.match(r"([A-Za-z0-9_.-]+)", stripped)
+    if match and match.group(1).lower() in skip:
+        continue
+    lines.append(line)
+
+dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+print(dest)
+PY
+}
+
+if [[ ! -f "$VENV_DIR/.train_deps_installed" || "$(cat "$VENV_DIR/.train_deps_key" 2>/dev/null || true)" != "$TRAIN_DEPS_KEY" ]]; then
+  "$PY" -m pip install -U pip setuptools wheel
+  if [[ -n "${OWW_TORCH_CUDA:-}" && "${OWW_FORCE_CPU:-0}" != "1" ]]; then
+    install_cuda_torch
+    FILTERED_REQUIREMENTS="$(write_filtered_train_requirements)"
+    "$PY" -m pip install -r "$FILTERED_REQUIREMENTS"
+  else
+    "$PY" -m pip install -r requirements-train.txt
+  fi
 
   touch "$VENV_DIR/.train_deps_installed"
+  printf "%s\n" "$TRAIN_DEPS_KEY" > "$VENV_DIR/.train_deps_key"
 else
   echo "Reusing existing training venv"
 fi
@@ -121,25 +193,26 @@ then
   "$PY" -m pip install "setuptools==80.9.0"
 fi
 
-if [[ ! -d vendor/openwakeword/.git ]]; then
-  git clone https://github.com/dscripka/openWakeWord.git vendor/openwakeword
+if [[ ! -d "$OPENWAKEWORD_DIR/.git" ]]; then
+  git clone https://github.com/dscripka/openWakeWord.git "$OPENWAKEWORD_DIR"
 else
-  git -C vendor/openwakeword pull --ff-only origin main || true
+  git -C "$OPENWAKEWORD_DIR" pull --ff-only origin main || true
 fi
 
-"$PY" scripts/patch_openwakeword_device.py vendor/openwakeword
+"$PY" scripts/patch_openwakeword_device.py "$OPENWAKEWORD_DIR"
 
 is_current_piper_layout() {
   [[ -f "$PIPER_DIR/piper_sample_generator/__main__.py" && -d "$PIPER_DIR/piper_train" ]]
 }
 
 refresh_piper_checkout() {
-  local backup_dir model_cache
-  backup_dir="$ROOT_DIR/vendor/piper-sample-generator.backup.$(date +%Y%m%d%H%M%S)"
-  model_cache="$ROOT_DIR/vendor/.piper-model-cache"
+  local backup_dir model_cache piper_parent
+  piper_parent="$(dirname "$PIPER_DIR")"
+  backup_dir="$PIPER_DIR.backup.$(date +%Y%m%d%H%M%S)"
+  model_cache="$piper_parent/.piper-model-cache"
 
   echo "Refreshing stale piper-sample-generator checkout from $PIPER_REPO_URL"
-  mkdir -p "$model_cache"
+  mkdir -p "$model_cache" "$piper_parent"
   if [[ -d "$PIPER_DIR/models" ]]; then
     cp -R "$PIPER_DIR/models/." "$model_cache/" 2>/dev/null || true
   fi
@@ -181,7 +254,7 @@ else
 fi
 
 "$PY" scripts/patch_piper_generator.py "$PIPER_DIR"
-"$PY" -m pip install -e vendor/openwakeword
+"$PY" -m pip install -e "$OPENWAKEWORD_DIR"
 if ! "$PY" -m pip install -e "$PIPER_DIR"; then
   echo "WARNING: editable piper-sample-generator install failed; retrying vendored fork without dependency resolution"
   "$PY" -m pip install --no-build-isolation --force-reinstall --no-deps -e "$PIPER_DIR"
@@ -237,9 +310,18 @@ else
   DOWNLOAD_ARGS+=(--skip-rirs)
 fi
 
-"$PY" scripts/download_assets.py "${DOWNLOAD_ARGS[@]}"
+"$PY" scripts/download_assets.py --data-dir "$ASSET_DIR" "${DOWNLOAD_ARGS[@]}"
 
-TRAIN_ARGS=("$@")
+TRAIN_ARGS=(
+  --data-dir "$ASSET_DIR"
+  --output-root "$OUTPUT_ROOT"
+  --export-dir "$EXPORT_DIR"
+  --openwakeword-dir "$OPENWAKEWORD_DIR"
+  --piper-dir "$PIPER_DIR"
+  --positive-dir "$POSITIVE_DIR"
+  --negative-dir "$NEGATIVE_DIR"
+  "$@"
+)
 if [[ "${OWW_FORCE_CPU:-0}" == "1" ]]; then
   TRAIN_ARGS+=(--force-cpu)
 fi

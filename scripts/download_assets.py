@@ -8,6 +8,12 @@ import urllib.request
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+OPENWAKEWORD_DIR = Path(
+    os.environ.get("OWW_OPENWAKEWORD_DIR", str(ROOT_DIR / "vendor" / "openwakeword"))
+).resolve()
+PIPER_DIR = Path(
+    os.environ.get("OWW_PIPER_DIR", str(ROOT_DIR / "vendor" / "piper-sample-generator"))
+).resolve()
 
 FEATURES_URL = "https://huggingface.co/datasets/davidscripka/openwakeword_features/resolve/main/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
 VALIDATION_URL = "https://huggingface.co/datasets/davidscripka/openwakeword_features/resolve/main/validation_set_features.npy"
@@ -142,7 +148,7 @@ def generate_synthetic_background(out_dir: Path, n_clips: int) -> None:
 
 
 def download_openwakeword_resources() -> None:
-    models_dir = ROOT_DIR / "vendor" / "openwakeword" / "openwakeword" / "resources" / "models"
+    models_dir = OPENWAKEWORD_DIR / "openwakeword" / "resources" / "models"
     for name in OPENWAKEWORD_RESOURCE_MODELS:
         download_file(f"{OPENWAKEWORD_RELEASE_BASE}/{name}", models_dir / name)
 
@@ -166,7 +172,7 @@ def main() -> int:
     else:
         log("Skipping full negative feature download")
 
-    piper_model = ROOT_DIR / "vendor" / "piper-sample-generator" / "models" / "en_US-libritts_r-medium.pt"
+    piper_model = PIPER_DIR / "models" / "en_US-libritts_r-medium.pt"
     download_file(PIPER_GENERATOR_URL, piper_model)
     download_file(PIPER_GENERATOR_CONFIG_URL, Path(str(piper_model) + ".json"))
     download_openwakeword_resources()

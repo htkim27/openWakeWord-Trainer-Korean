@@ -276,6 +276,8 @@ def log_torch_devices() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the openWakeWord automatic training pipeline.")
+    data_root = Path(os.environ.get("OWW_DATA_DIR", str(ROOT_DIR))).resolve()
+    asset_dir = Path(os.environ.get("OWW_ASSET_DIR", os.environ.get("OWW_DATA_DIR", str(ROOT_DIR / "data")))).resolve()
     parser.add_argument("phrase", help="Wake phrase to train, for example 'hey tater'")
     parser.add_argument("--model-name")
     parser.add_argument("--samples", type=int, default=int(os.environ.get("OWW_DEFAULT_SAMPLES", "20000")))
@@ -300,13 +302,22 @@ def main() -> int:
     parser.add_argument("--target-fp-per-hour", type=float, default=float(os.environ.get("OWW_DEFAULT_TARGET_FP", "0.2")))
     parser.add_argument("--max-negative-weight", type=int, default=int(os.environ.get("OWW_DEFAULT_MAX_NEGATIVE_WEIGHT", "1500")))
     parser.add_argument("--custom-negative-phrase", action="append", default=[])
-    parser.add_argument("--data-dir", default=os.environ.get("OWW_DATA_DIR", str(ROOT_DIR / "data")))
-    parser.add_argument("--output-root", default=str(ROOT_DIR / "output"))
-    parser.add_argument("--export-dir", default=str(ROOT_DIR / "trained_wake_words"))
-    parser.add_argument("--openwakeword-dir", default=str(ROOT_DIR / "vendor" / "openwakeword"))
-    parser.add_argument("--piper-dir", default=str(ROOT_DIR / "vendor" / "piper-sample-generator"))
-    parser.add_argument("--positive-dir", default=str(ROOT_DIR / "personal_samples"))
-    parser.add_argument("--negative-dir", default=str(ROOT_DIR / "negative_samples"))
+    parser.add_argument("--data-dir", default=str(asset_dir))
+    parser.add_argument("--output-root", default=os.environ.get("OWW_OUTPUT_ROOT", str(data_root / "output")))
+    parser.add_argument(
+        "--export-dir",
+        default=os.environ.get("OWW_EXPORT_DIR", os.environ.get("OWW_TRAINED_DIR", str(data_root / "trained_wake_words"))),
+    )
+    parser.add_argument(
+        "--openwakeword-dir",
+        default=os.environ.get("OWW_OPENWAKEWORD_DIR", str(data_root / "vendor" / "openwakeword")),
+    )
+    parser.add_argument(
+        "--piper-dir",
+        default=os.environ.get("OWW_PIPER_DIR", str(data_root / "vendor" / "piper-sample-generator")),
+    )
+    parser.add_argument("--positive-dir", default=os.environ.get("OWW_PERSONAL_DIR", str(data_root / "personal_samples")))
+    parser.add_argument("--negative-dir", default=os.environ.get("OWW_NEGATIVE_DIR", str(data_root / "negative_samples")))
     parser.add_argument("--config-only", action="store_true")
     parser.add_argument("--skip-generate", action="store_true")
     parser.add_argument("--skip-augment", action="store_true")
