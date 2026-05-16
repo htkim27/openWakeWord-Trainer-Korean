@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import os
 import re
@@ -16,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +26,7 @@ STATIC_DIR = ROOT_DIR / "static"
 PERSONAL_DIR = ROOT_DIR / "personal_samples"
 NEGATIVE_DIR = ROOT_DIR / "negative_samples"
 CAPTURED_DIR = ROOT_DIR / "captured_audio"
+TRIM_HISTORY_DIR = ROOT_DIR / "trim_history"
 TRAINED_DIR = ROOT_DIR / "trained_wake_words"
 LOG_DIR = ROOT_DIR / "logs"
 TRAIN_SCRIPT = Path(os.environ.get("TRAIN_SCRIPT", str(ROOT_DIR / "train_openwakeword.sh"))).resolve()
@@ -34,7 +36,7 @@ TARGET_CHANNELS = 1
 TARGET_SAMPLE_WIDTH = 2
 MAX_LOG_LINES = int(os.environ.get("OWW_MAX_LOG_LINES", "1200"))
 
-for directory in (STATIC_DIR, PERSONAL_DIR, NEGATIVE_DIR, CAPTURED_DIR, TRAINED_DIR, LOG_DIR):
+for directory in (STATIC_DIR, PERSONAL_DIR, NEGATIVE_DIR, CAPTURED_DIR, TRIM_HISTORY_DIR, TRAINED_DIR, LOG_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="openWakeWord Trainer")
@@ -53,6 +55,12 @@ STATE: dict[str, Any] = {
         "finished_at": None,
     }
 }
+
+_silero_vad_model = None
+_silero_vad_utils = None
+_SILERO_VAD_LOCK = threading.Lock()
+VAD_SELECTION_PAD_START_S = 0.08
+VAD_SELECTION_PAD_END_S = 0.08
 
 
 def safe_name(raw: str) -> str:
@@ -74,24 +82,55 @@ def _audio_dir(kind: str) -> Path:
 
 
 def _resolve_child(directory: Path, name: str) -> Path:
-    path = (directory / name).resolve()
-    if directory.resolve() not in path.parents and path != directory.resolve():
+    candidate = Path(name or "").name
+    if not candidate or candidate != (name or ""):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    path = (directory / candidate).resolve()
+    if path.parent != directory.resolve():
         raise HTTPException(status_code=400, detail="Invalid file path")
     return path
 
 
+def _audio_sidecar_path(audio_path: Path) -> Path:
+    return audio_path.with_suffix(".json")
+
+
+def _load_sidecar_json(audio_path: Path) -> dict[str, Any]:
+    sidecar = _audio_sidecar_path(audio_path)
+    if not sidecar.exists():
+        return {}
+    try:
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_sidecar_json(audio_path: Path, payload: dict[str, Any]) -> None:
+    _audio_sidecar_path(audio_path).write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True),
+        encoding="utf-8",
+    )
+
+
+def _wav_item(path: Path, directory: Path) -> dict[str, Any]:
+    stat = path.stat()
+    meta = _load_sidecar_json(path)
+    return {
+        "name": path.name,
+        "size": stat.st_size,
+        "mtime": stat.st_mtime,
+        "url": f"/api/audio/{directory.name}/{path.name}",
+        "trimmed": bool(meta.get("trimmed")),
+        "source_file": meta.get("source_file") or "",
+    }
+
+
 def _list_wavs(directory: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("*.wav")):
-        stat = path.stat()
-        rows.append(
-            {
-                "name": path.name,
-                "size": stat.st_size,
-                "mtime": stat.st_mtime,
-                "url": f"/api/audio/{directory.name}/{path.name}",
-            }
-        )
+    for path in sorted(directory.glob("*.wav"), key=lambda item: item.stat().st_mtime, reverse=True):
+        rows.append(_wav_item(path, directory))
+    rows.sort(key=lambda item: item.get("trimmed", False))
     return rows
 
 
@@ -112,6 +151,45 @@ def _list_artifacts() -> list[dict[str, Any]]:
     return rows
 
 
+def _inspect_wav_bytes(data: bytes) -> dict[str, Any] | None:
+    try:
+        with wave.open(io.BytesIO(data), "rb") as wav:
+            frames = wav.getnframes()
+            rate = wav.getframerate()
+            duration = (frames / rate) if rate else 0.0
+            return {
+                "sample_rate": rate,
+                "channels": wav.getnchannels(),
+                "sample_width": wav.getsampwidth(),
+                "frames": frames,
+                "duration_s": round(duration, 3),
+            }
+    except Exception:
+        return None
+
+
+def _is_target_wav_info(info: dict[str, Any] | None) -> bool:
+    return bool(
+        info
+        and info.get("sample_rate") == TARGET_SAMPLE_RATE
+        and info.get("channels") == TARGET_CHANNELS
+        and info.get("sample_width") == TARGET_SAMPLE_WIDTH
+        and int(info.get("frames") or 0) > 0
+    )
+
+
+def _target_wav_bytes(data: bytes, original_name: str) -> bytes:
+    if _is_target_wav_info(_inspect_wav_bytes(data)):
+        return data
+    suffix = Path(original_name or "audio.wav").suffix.lower() or ".wav"
+    with tempfile.TemporaryDirectory(prefix="oww_trim_") as tmpdir:
+        src = Path(tmpdir) / f"source{suffix}"
+        dest = Path(tmpdir) / "target.wav"
+        src.write_bytes(data)
+        _convert_audio(src, dest)
+        return dest.read_bytes()
+
+
 def _is_target_wav(path: Path) -> bool:
     try:
         with wave.open(str(path), "rb") as wav:
@@ -126,6 +204,44 @@ def _is_target_wav(path: Path) -> bool:
 
 def _ffmpeg_path() -> str | None:
     return shutil.which("ffmpeg")
+
+
+def _load_silero_vad():
+    global _silero_vad_model, _silero_vad_utils
+    if _silero_vad_model is not None:
+        return _silero_vad_model, _silero_vad_utils
+    with _SILERO_VAD_LOCK:
+        if _silero_vad_model is not None:
+            return _silero_vad_model, _silero_vad_utils
+        import torch
+        import silero_vad
+
+        model = silero_vad.load_silero_vad()
+        model.eval()
+        _silero_vad_model = model
+        _silero_vad_utils = {"torch": torch}
+        return model, _silero_vad_utils
+
+
+def _detect_speech_segments(wav_bytes: bytes) -> list[dict[str, float]]:
+    model, utils = _load_silero_vad()
+    torch = utils["torch"]
+    import numpy as np
+    from silero_vad.utils_vad import get_speech_timestamps
+
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+        raw = wav.readframes(wav.getnframes())
+    samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    timestamps = get_speech_timestamps(
+        torch.from_numpy(samples),
+        model,
+        sampling_rate=TARGET_SAMPLE_RATE,
+        threshold=0.5,
+        min_speech_duration_ms=150,
+        min_silence_duration_ms=100,
+        return_seconds=True,
+    )
+    return [{"start": round(ts["start"], 3), "end": round(ts["end"], 3)} for ts in timestamps]
 
 
 def _convert_audio(source: Path, dest: Path) -> None:
@@ -292,6 +408,104 @@ def delete_sample(kind: str, name: str) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/samples/{kind}/{name}/vad")
+def vad_segments(kind: str, name: str) -> JSONResponse:
+    directory = _audio_dir(kind)
+    path = _resolve_child(directory, name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    wav_bytes = _target_wav_bytes(path.read_bytes(), path.name)
+    try:
+        all_segments = _detect_speech_segments(wav_bytes)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"VAD failed: {exc}") from exc
+
+    filtered = [segment for segment in all_segments if (segment["end"] - segment["start"]) >= 0.25]
+    if not filtered:
+        return JSONResponse({"ok": True, "segments": [], "segment_count": 0})
+
+    segment = filtered[0]
+    info = _inspect_wav_bytes(wav_bytes) or {}
+    duration_s = float(info.get("duration_s") or 0.0)
+    start = max(0.0, round(segment["start"] - VAD_SELECTION_PAD_START_S, 3))
+    end = round(segment["end"] + VAD_SELECTION_PAD_END_S, 3)
+    if duration_s > 0:
+        end = min(duration_s, end)
+    if end <= start:
+        end = start + 0.001
+    return JSONResponse({"ok": True, "segments": [{"start": start, "end": end}], "segment_count": 1})
+
+
+@app.post("/api/samples/trim")
+async def trim_sample_upload(
+    file: UploadFile = File(...),
+    kind: str = Form(...),
+    source_file: str = Form(...),
+    start_time: str | None = Form(None),
+    end_time: str | None = Form(None),
+) -> JSONResponse:
+    directory = _audio_dir(kind)
+    source_path = _resolve_child(directory, source_file)
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    data = _target_wav_bytes(data, file.filename or "trimmed.wav")
+
+    TRIM_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    backup_name = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}_{kind}_{source_path.name}"
+    backup_path = TRIM_HISTORY_DIR / backup_name
+    shutil.copy2(source_path, backup_path)
+    source_sidecar = _audio_sidecar_path(source_path)
+    if source_sidecar.exists():
+        shutil.copy2(source_sidecar, _audio_sidecar_path(backup_path))
+
+    previous_sidecar = _load_sidecar_json(source_path)
+    source_path.write_bytes(data)
+    sidecar = {
+        **previous_sidecar,
+        "trimmed": True,
+        "source_file": previous_sidecar.get("source_file") or source_path.name,
+        "source_kind": kind,
+        "trim_start_s": float(start_time) if start_time else None,
+        "trim_end_s": float(end_time) if end_time else None,
+        "undo_backup_file": backup_name,
+    }
+    _write_sidecar_json(source_path, sidecar)
+
+    return JSONResponse({"ok": True, "item": _wav_item(source_path, directory), "message": f"Trimmed {source_path.name}"})
+
+
+@app.post("/api/samples/revert")
+def revert_trim(kind: str = Form(...), name: str = Form(...)) -> JSONResponse:
+    directory = _audio_dir(kind)
+    path = _resolve_child(directory, name)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    sidecar = _load_sidecar_json(path)
+    backup_name = str(sidecar.get("undo_backup_file") or "")
+    if not backup_name:
+        raise HTTPException(status_code=400, detail="No trim backup found for this sample")
+    backup_path = _resolve_child(TRIM_HISTORY_DIR, backup_name)
+    if not backup_path.exists():
+        raise HTTPException(status_code=404, detail="Trim backup file missing")
+
+    shutil.copy2(backup_path, path)
+    backup_sidecar = _audio_sidecar_path(backup_path)
+    if backup_sidecar.exists():
+        shutil.copy2(backup_sidecar, _audio_sidecar_path(path))
+    else:
+        _audio_sidecar_path(path).unlink(missing_ok=True)
+
+    backup_path.unlink(missing_ok=True)
+    backup_sidecar.unlink(missing_ok=True)
+    return JSONResponse({"ok": True, "item": _wav_item(path, directory), "message": f"Reverted {path.name}"})
+
+
 @app.delete("/api/samples/{kind}")
 def clear_samples(kind: str) -> JSONResponse:
     directory = _audio_dir(kind)
@@ -325,6 +539,9 @@ def approve_captured(name: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail="Captured clip not found")
     dest = PERSONAL_DIR / src.name
     shutil.move(str(src), str(dest))
+    src_sidecar = _audio_sidecar_path(src)
+    if src_sidecar.exists():
+        shutil.move(str(src_sidecar), str(_audio_sidecar_path(dest)))
     return JSONResponse({"ok": True, "name": dest.name})
 
 
@@ -335,6 +552,9 @@ def false_wake_captured(name: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail="Captured clip not found")
     dest = NEGATIVE_DIR / src.name
     shutil.move(str(src), str(dest))
+    src_sidecar = _audio_sidecar_path(src)
+    if src_sidecar.exists():
+        shutil.move(str(src_sidecar), str(_audio_sidecar_path(dest)))
     return JSONResponse({"ok": True, "name": dest.name})
 
 

@@ -390,6 +390,155 @@
     pre { margin: 0; }
     .accent { color: var(--orange); }
 
+
+    .paginationControls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px 0 0;
+      flex-wrap: wrap;
+    }
+    .paginationControls .pageInfo {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .paginationControls input {
+      width: 58px;
+      padding: 6px 8px;
+      text-align: center;
+      font-size: 13px;
+    }
+    .pill.trimBadge {
+      color: #89d4ff;
+      border-color: rgba(137,212,255,0.25);
+      background: rgba(137,212,255,0.08);
+    }
+    .trimBtn {
+      border-color: rgba(255,138,42,0.3);
+      background: rgba(255,138,42,0.1);
+    }
+    .trimBtn:hover {
+      border-color: rgba(255,138,42,0.5);
+      background: rgba(255,138,42,0.18);
+    }
+    .trimOverlay {
+      position: fixed;
+      inset: 0;
+      padding: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 5, 10, 0.6);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s ease, visibility 0.18s ease;
+      z-index: 11000;
+    }
+    .trimOverlay.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .trimDialog {
+      width: min(960px, calc(100vw - 36px));
+      max-height: min(90vh, 900px);
+      display: grid;
+      grid-template-rows: auto 1fr auto auto auto;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: linear-gradient(180deg, rgba(17,20,28,0.82), rgba(8,10,16,0.94));
+      box-shadow: 0 28px 84px rgba(0,0,0,0.58);
+      backdrop-filter: blur(18px) saturate(1.12);
+    }
+    .trimHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .trimTitle { margin: 0; font-size: 18px; }
+    .trimHint { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+    .trimCanvasWrap {
+      position: relative;
+      width: 100%;
+      min-height: 120px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .trimCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .trimHandle {
+      position: absolute;
+      top: 0;
+      width: 48px;
+      height: 100%;
+      cursor: ew-resize;
+      pointer-events: auto;
+      touch-action: none;
+      transform: translateX(-50%);
+    }
+    .trimHandle::after {
+      content: '';
+      position: absolute;
+      top: 10%;
+      bottom: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 3px;
+      border-radius: 2px;
+      background: var(--orange);
+      box-shadow: 0 0 6px rgba(255,138,42,0.5);
+    }
+    .trimHandle::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%,-50%);
+      width: 10px;
+      height: 24px;
+      border-radius: 5px;
+      border: 1px solid rgba(255,138,42,0.5);
+      background: rgba(255,138,42,0.15);
+    }
+    .trimTimeInfo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      flex-wrap: wrap;
+    }
+    .trimSeparator { color: var(--muted); }
+    .trimVadInfo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+    .trimActions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .trimActions button {
+      flex: 1;
+      min-width: 120px;
+    }
+
+
     @keyframes consoleWobble {
       0%   { transform: translateY(24px) scale(0.93) rotate(-1.2deg); }
       34%  { transform: translateY(-6px) scale(1.02) rotate(0.85deg); }
@@ -424,6 +573,25 @@
       .consoleActions button,
       .capturedActions button,
       .tabBtn { width: 100%; }
+      .trimOverlay { padding: 8px; }
+      .trimDialog {
+        width: 100%;
+        height: 96vh;
+        padding: 14px;
+        grid-template-rows: auto 1fr auto auto auto;
+      }
+      .trimCanvasWrap { min-height: 100px; }
+      .trimHeader {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .trimActions {
+        flex-direction: column;
+      }
+      .trimActions button {
+        width: 100%;
+        min-width: unset;
+      }
     }
   </style>
 </head>
@@ -578,6 +746,7 @@
             </div>
           </div>
           <div id="capturedList" class="capturedList"></div>
+          <div id="capturedPagination"></div>
         </section>
       </section>
 
@@ -607,6 +776,7 @@
               <div class="row"><button onclick="uploadFiles('personal')">Upload</button></div>
             </div>
             <div id="personalList" class="list"></div>
+            <div id="personalPagination"></div>
           </section>
 
           <section class="card studioPanel stack">
@@ -625,6 +795,7 @@
               <div class="row"><button onclick="uploadFiles('negative')">Upload</button></div>
             </div>
             <div id="negativeList" class="list"></div>
+            <div id="negativePagination"></div>
           </section>
         </div>
       </section>
@@ -657,6 +828,41 @@
     </main>
   </div>
 
+
+  <div id="trimOverlay" class="trimOverlay" aria-hidden="true">
+    <div id="trimDialog" class="trimDialog" role="dialog" aria-modal="true">
+      <div class="trimHeader">
+        <div>
+          <h3 id="trimTitle" class="trimTitle">Trim Audio</h3>
+          <p id="trimHint" class="trimHint">Drag the handles to select a region, then save the trimmed clip.</p>
+        </div>
+        <button id="closeTrimBtn" type="button">Close</button>
+      </div>
+      <div class="trimCanvasWrap">
+        <canvas id="trimCanvas" class="trimCanvas"></canvas>
+        <div id="trimStartHandle" class="trimHandle" data-handle="start"></div>
+        <div id="trimEndHandle" class="trimHandle" data-handle="end"></div>
+      </div>
+      <div class="trimTimeInfo">
+        <span id="trimStartTime">0.00s</span>
+        <span class="trimSeparator">--</span>
+        <span id="trimEndTime">0.00s</span>
+        <span class="trimSeparator">|</span>
+        <span id="trimDuration">Duration: 0.00s</span>
+      </div>
+      <div id="trimVadInfo" class="trimVadInfo">
+        <span class="pill ok">VAD detected speech</span>
+        <span id="trimVadSegments" class="muted"></span>
+      </div>
+      <div class="trimActions">
+        <button id="trimPlayBtn" type="button">Play selection</button>
+        <button id="trimSelectFirstVadBtn" type="button">Select first VAD</button>
+        <button id="trimSaveBtn" class="primary" type="button">Save Trim</button>
+        <button id="trimCancelBtn" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <div id="consoleOverlay" class="consoleOverlay" aria-hidden="true">
     <div id="consoleWindow" class="consoleWindow" role="dialog" aria-modal="true" aria-labelledby="consoleTitle">
       <div class="consoleHeader">
@@ -680,7 +886,12 @@
     const views = [...document.querySelectorAll("[data-view]")];
     const tabs = [...document.querySelectorAll("[data-tab]")];
     const fields = ["samples", "validation_samples", "steps", "tts_batch_size", "negative_tts_batch_divisor", "augmentation_batch_size", "target_fp_per_hour", "max_negative_weight"];
+    const SAMPLE_PAGE_SIZE = 10;
+    const audioState = { personal: [], negative: [], captured: [] };
+    const audioPages = { personal: 0, negative: 0, captured: 0 };
     let logAutoFollow = true;
+    let trimKind = null;
+    let trimFileName = null;
 
     function isLogNearBottom() {
       const log = $("trainLog");
@@ -783,7 +994,10 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeConsole();
+      if (event.key === "Escape") {
+        closeTrimModal();
+        closeConsole();
+      }
     });
 
     function bytes(n) {
@@ -833,19 +1047,282 @@
         <p><strong>Log:</strong> ${training.log_path || "-"}</p>`;
     }
 
+    function audioCollection(kind) {
+      return ({ personal: "personal_samples", negative: "negative_samples", captured: "captured_audio" })[kind] || kind;
+    }
+
+    function setAudioPage(kind, page) {
+      audioPages[kind] = Math.max(0, page);
+      renderAudioList(`${kind}List`, kind, audioState[kind] || []);
+    }
+
+    function renderPagination(kind, totalPages, page, totalItems) {
+      const target = $(`${kind}Pagination`);
+      if (!target) return;
+      if (totalPages <= 1) {
+        target.innerHTML = "";
+        return;
+      }
+      target.innerHTML = `
+        <div class="paginationControls">
+          <button type="button" ${page <= 0 ? "disabled" : ""} onclick="setAudioPage('${kind}', ${page - 1})">Prev</button>
+          <span class="pageInfo">${page + 1} / ${totalPages} (${totalItems} total)</span>
+          <span class="pageInfo">Go to</span>
+          <input type="number" min="1" max="${totalPages}" value="${page + 1}" onchange="setAudioPage('${kind}', Number(this.value || 1) - 1)">
+          <button type="button" ${page >= totalPages - 1 ? "disabled" : ""} onclick="setAudioPage('${kind}', ${page + 1})">Next</button>
+        </div>`;
+    }
+
     function renderAudioList(target, kind, items) {
-      $(target).innerHTML = items.length ? items.map(item => `
+      const rows = Array.isArray(items) ? items : [];
+      audioState[kind] = rows;
+      let page = audioPages[kind] || 0;
+      const totalPages = Math.max(1, Math.ceil(rows.length / SAMPLE_PAGE_SIZE));
+      if (page >= totalPages) page = totalPages - 1;
+      audioPages[kind] = page;
+      const pageRows = rows.slice(page * SAMPLE_PAGE_SIZE, page * SAMPLE_PAGE_SIZE + SAMPLE_PAGE_SIZE);
+      renderPagination(kind, totalPages, page, rows.length);
+      $(target).innerHTML = pageRows.length ? pageRows.map(item => {
+        const safeName = escapeHtml(item.name);
+        const encodedName = encodeURIComponent(item.name);
+        const sourceLabel = item.source_file && item.source_file !== item.name ? ` from ${escapeHtml(item.source_file)}` : "";
+        const trimmedBadge = item.trimmed ? `<span class="pill trimBadge">Trimmed${sourceLabel}</span>` : "";
+        const capturedActions = kind === "captured" ? `<button onclick="moveCaptured('${encodedName}', 'approve')">Good</button><button onclick="moveCaptured('${encodedName}', 'false_wake')">False wake</button>` : "";
+        const revertAction = item.trimmed ? `<button onclick="revertSample('${kind}', '${encodedName}')">Revert</button>` : "";
+        return `
         <div class="item">
           <div>
-            <strong>${item.name}</strong>
-            <div class="row" style="margin-top:6px;"><span class="pill">${bytes(item.size)}</span></div>
-            <audio controls src="${item.url}"></audio>
+            <strong>${safeName}</strong>
+            <div class="row" style="margin-top:6px;"><span class="pill">${bytes(item.size)}</span>${trimmedBadge}</div>
+            <audio controls src="${escapeHtml(item.url)}?t=${encodeURIComponent(item.mtime || "")}"></audio>
           </div>
           <div class="row">
-            ${kind === "captured" ? `<button onclick="moveCaptured('${item.name}', 'approve')">Good</button><button onclick="moveCaptured('${item.name}', 'false_wake')">False wake</button>` : ""}
-            <button class="danger" onclick="deleteSample('${kind}', '${item.name}')">Delete</button>
+            ${capturedActions}
+            <button class="trimBtn" onclick="openTrimModal('${kind}', '${encodedName}')">Trim</button>
+            ${revertAction}
+            <button class="danger" onclick="deleteSample('${kind}', '${encodedName}')">Delete</button>
           </div>
-        </div>`).join("") : `<p>No clips.</p>`;
+        </div>`;
+      }).join("") : `<p>No clips.</p>`;
+    }
+
+    const TrimWaveform = {
+      audioBuffer: null,
+      startRatio: 0,
+      endRatio: 1,
+      duration: 0,
+      vadSegments: [],
+      dragging: null,
+      async init(kind, fileName) {
+        const audioUrl = `/api/audio/${encodeURIComponent(audioCollection(kind))}/${encodeURIComponent(fileName)}`;
+        const resp = await fetch(audioUrl);
+        const arrayBuf = await resp.arrayBuffer();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.audioBuffer = await ctx.decodeAudioData(arrayBuf);
+        await ctx.close();
+        this.duration = this.audioBuffer.duration;
+        this.startRatio = 0;
+        this.endRatio = 1;
+        try {
+          const vadData = await api(`/api/samples/${encodeURIComponent(kind)}/${encodeURIComponent(fileName)}/vad`, { method: "POST" });
+          this.vadSegments = vadData.segments || [];
+        } catch (e) {
+          this.vadSegments = [];
+          console.warn("VAD failed", e);
+        }
+        if (this.vadSegments.length > 0) {
+          this.startRatio = this.vadSegments[0].start / this.duration;
+          this.endRatio = this.vadSegments[0].end / this.duration;
+        }
+        this.draw();
+        this.updateHandles();
+        return { duration: this.duration, vadCount: this.vadSegments.length };
+      },
+      draw() {
+        const canvas = $("trimCanvas");
+        if (!canvas || !this.audioBuffer) return;
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+        const width = rect.width;
+        const height = rect.height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.fillRect(0, 0, width, height);
+        const data = this.audioBuffer.getChannelData(0);
+        const step = Math.ceil(data.length / width);
+        const amp = height / 2;
+        ctx.strokeStyle = "rgba(255,192,127,0.78)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x < width; x += 1) {
+          let min = 1;
+          let max = -1;
+          const start = x * step;
+          for (let i = 0; i < step && start + i < data.length; i += 1) {
+            const datum = data[start + i];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
+          }
+          ctx.moveTo(x, amp + min * amp);
+          ctx.lineTo(x, amp + max * amp);
+        }
+        ctx.stroke();
+        this.vadSegments.forEach(seg => {
+          const x1 = (seg.start / this.duration) * width;
+          const x2 = (seg.end / this.duration) * width;
+          ctx.fillStyle = "rgba(57,212,160,0.14)";
+          ctx.fillRect(x1, 0, x2 - x1, height);
+        });
+        const sx = this.startRatio * width;
+        const ex = this.endRatio * width;
+        ctx.fillStyle = "rgba(255,138,42,0.18)";
+        ctx.fillRect(sx, 0, ex - sx, height);
+        ctx.fillStyle = "rgba(0,0,0,0.36)";
+        ctx.fillRect(0, 0, sx, height);
+        ctx.fillRect(ex, 0, width - ex, height);
+      },
+      updateHandles() {
+        $("trimStartHandle").style.left = `${this.startRatio * 100}%`;
+        $("trimEndHandle").style.left = `${this.endRatio * 100}%`;
+        updateTrimTimes();
+        this.draw();
+      },
+      setStartSeconds(seconds) {
+        this.startRatio = Math.max(0, Math.min(seconds / this.duration, this.endRatio - 0.01));
+        this.updateHandles();
+      },
+      setEndSeconds(seconds) {
+        this.endRatio = Math.min(1, Math.max(seconds / this.duration, this.startRatio + 0.01));
+        this.updateHandles();
+      },
+      getStartTime() { return this.startRatio * this.duration; },
+      getEndTime() { return this.endRatio * this.duration; },
+      async playSelection() {
+        if (!this.audioBuffer) return;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createBufferSource();
+        src.buffer = this.audioBuffer;
+        src.connect(audioCtx.destination);
+        src.onended = () => audioCtx.close();
+        src.start(0, this.getStartTime(), this.getEndTime() - this.getStartTime());
+      },
+      async getTrimmedWavBlob() {
+        const buf = this.audioBuffer;
+        const startSample = Math.floor(this.getStartTime() * buf.sampleRate);
+        const endSample = Math.floor(this.getEndTime() * buf.sampleRate);
+        const length = endSample - startSample;
+        const channels = buf.numberOfChannels;
+        const wavBuf = new ArrayBuffer(44 + length * channels * 2);
+        const view = new DataView(wavBuf);
+        const writeString = (offset, str) => { for (let i = 0; i < str.length; i += 1) view.setUint8(offset + i, str.charCodeAt(i)); };
+        writeString(0, "RIFF");
+        view.setUint32(4, 36 + length * channels * 2, true);
+        writeString(8, "WAVE");
+        writeString(12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, channels, true);
+        view.setUint32(24, buf.sampleRate, true);
+        view.setUint32(28, buf.sampleRate * channels * 2, true);
+        view.setUint16(32, channels * 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, "data");
+        view.setUint32(40, length * channels * 2, true);
+        let offset = 44;
+        for (let i = 0; i < length; i += 1) {
+          for (let ch = 0; ch < channels; ch += 1) {
+            const sample = Math.max(-1, Math.min(1, buf.getChannelData(ch)[startSample + i]));
+            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+            offset += 2;
+          }
+        }
+        return new Blob([wavBuf], { type: "audio/wav" });
+      },
+      onPointerDown(handle, event) {
+        event.preventDefault();
+        this.dragging = handle;
+        this.onPointerMove(event);
+      },
+      onPointerMove(event) {
+        if (!this.dragging) return;
+        event.preventDefault();
+        const touch = event.touches ? event.touches[0] : event;
+        const canvas = $("trimCanvas");
+        const rect = canvas.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+        if (this.dragging === "start") {
+          this.startRatio = Math.min(ratio, this.endRatio - 0.01);
+        } else {
+          this.endRatio = Math.max(ratio, this.startRatio + 0.01);
+        }
+        this.updateHandles();
+      },
+      onPointerUp() { this.dragging = null; },
+      destroy() {
+        this.audioBuffer = null;
+        this.vadSegments = [];
+        this.dragging = null;
+      },
+    };
+
+    async function openTrimModal(kind, encodedName) {
+      trimKind = kind;
+      trimFileName = decodeURIComponent(encodedName);
+      $("trimTitle").textContent = `Trim ${trimFileName}`;
+      $("trimHint").textContent = "Loading audio...";
+      $("trimSaveBtn").disabled = true;
+      $("trimPlayBtn").disabled = true;
+      $("trimOverlay").classList.add("open");
+      $("trimOverlay").setAttribute("aria-hidden", "false");
+      try {
+        const info = await TrimWaveform.init(kind, trimFileName);
+        $("trimHint").textContent = `Drag the handles to select a region. Duration: ${info.duration.toFixed(2)}s`;
+        $("trimSaveBtn").disabled = false;
+        $("trimPlayBtn").disabled = false;
+        if (info.vadCount > 0) {
+          $("trimVadInfo").style.display = "flex";
+          $("trimVadSegments").textContent = `${info.vadCount} speech segment${info.vadCount > 1 ? "s" : ""} detected`;
+        } else {
+          $("trimVadInfo").style.display = "none";
+        }
+      } catch (e) {
+        $("trimHint").textContent = `Failed to load audio: ${e.message}`;
+        alert(`Failed to load audio for trimming: ${e.message}`);
+      }
+    }
+
+    function closeTrimModal() {
+      $("trimOverlay").classList.remove("open");
+      $("trimOverlay").setAttribute("aria-hidden", "true");
+      $("trimSaveBtn").disabled = false;
+      $("trimSaveBtn").textContent = "Save Trim";
+      $("trimPlayBtn").disabled = false;
+      TrimWaveform.destroy();
+      trimKind = null;
+      trimFileName = null;
+    }
+
+    function updateTrimTimes() {
+      if (!TrimWaveform.audioBuffer) return;
+      const start = TrimWaveform.getStartTime();
+      const end = TrimWaveform.getEndTime();
+      $("trimStartTime").textContent = `${start.toFixed(2)}s`;
+      $("trimEndTime").textContent = `${end.toFixed(2)}s`;
+      $("trimDuration").textContent = `Duration: ${(end - start).toFixed(2)}s`;
+    }
+
+    async function revertSample(kind, encodedName) {
+      const name = decodeURIComponent(encodedName);
+      if (!confirm(`Revert ${name} to the original pre-trim audio?`)) return;
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append("name", name);
+      await api("/api/samples/revert", { method: "POST", body: form });
+      await refreshAll();
     }
 
     function renderArtifacts(items) {
@@ -891,7 +1368,8 @@
       await refreshAll();
     }
 
-    async function deleteSample(kind, name) {
+    async function deleteSample(kind, encodedName) {
+      const name = decodeURIComponent(encodedName);
       await api(`/api/samples/${kind}/${encodeURIComponent(name)}`, { method: "DELETE" });
       await refreshAll();
     }
@@ -902,7 +1380,8 @@
       await refreshAll();
     }
 
-    async function moveCaptured(name, action) {
+    async function moveCaptured(encodedName, action) {
+      const name = decodeURIComponent(encodedName);
       await api(`/api/captured/${encodeURIComponent(name)}/${action}`, { method: "POST" });
       await refreshAll();
     }
@@ -933,6 +1412,53 @@
     $("stopBtn").addEventListener("click", async () => {
       await api("/api/train/stop", { method: "POST" });
       await refreshLog();
+    });
+
+    $("closeTrimBtn").addEventListener("click", closeTrimModal);
+    $("trimCancelBtn").addEventListener("click", closeTrimModal);
+    $("trimOverlay").addEventListener("click", (event) => {
+      if (event.target === $("trimOverlay")) closeTrimModal();
+    });
+    $("trimPlayBtn").addEventListener("click", () => TrimWaveform.playSelection());
+    $("trimSelectFirstVadBtn").addEventListener("click", () => {
+      if (TrimWaveform.vadSegments.length > 0) {
+        const segment = TrimWaveform.vadSegments[0];
+        TrimWaveform.setStartSeconds(segment.start);
+        TrimWaveform.setEndSeconds(segment.end);
+      }
+    });
+    $("trimSaveBtn").addEventListener("click", async () => {
+      const start = TrimWaveform.getStartTime();
+      const end = TrimWaveform.getEndTime();
+      $("trimSaveBtn").disabled = true;
+      $("trimSaveBtn").textContent = "Saving...";
+      try {
+        const blob = await TrimWaveform.getTrimmedWavBlob();
+        const form = new FormData();
+        form.append("file", blob, "trimmed.wav");
+        form.append("kind", trimKind);
+        form.append("source_file", trimFileName);
+        form.append("start_time", start.toFixed(3));
+        form.append("end_time", end.toFixed(3));
+        await api("/api/samples/trim", { method: "POST", body: form });
+        closeTrimModal();
+        await refreshAll();
+      } catch (e) {
+        alert(`Trim failed: ${e.message}`);
+        $("trimSaveBtn").disabled = false;
+        $("trimSaveBtn").textContent = "Save Trim";
+      }
+    });
+    $("trimStartHandle").addEventListener("mousedown", (event) => TrimWaveform.onPointerDown("start", event));
+    $("trimEndHandle").addEventListener("mousedown", (event) => TrimWaveform.onPointerDown("end", event));
+    $("trimStartHandle").addEventListener("touchstart", (event) => TrimWaveform.onPointerDown("start", event), { passive: false });
+    $("trimEndHandle").addEventListener("touchstart", (event) => TrimWaveform.onPointerDown("end", event), { passive: false });
+    document.addEventListener("mousemove", (event) => TrimWaveform.onPointerMove(event));
+    document.addEventListener("touchmove", (event) => TrimWaveform.onPointerMove(event), { passive: false });
+    document.addEventListener("mouseup", () => TrimWaveform.onPointerUp());
+    document.addEventListener("touchend", () => TrimWaveform.onPointerUp());
+    window.addEventListener("resize", () => {
+      if ($("trimOverlay").classList.contains("open")) TrimWaveform.draw();
     });
 
     refreshAll();

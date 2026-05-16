@@ -23,17 +23,61 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
+install_ui_deps() {
+  "$PY" -m pip install -r requirements-ui.txt
+}
+
 if [[ ! -f "$PIN_FILE" ]]; then
   "$PY" -m pip install -U pip setuptools wheel
-  "$PY" -m pip install -r requirements-ui.txt
+  install_ui_deps
   touch "$PIN_FILE"
 else
   echo "Reusing existing UI venv"
+  if ! "$PY" - <<'PY' >/dev/null 2>&1
+import importlib.metadata as md
+
+def version_tuple(value):
+    parts = []
+    for token in str(value).replace("-", ".").split("."):
+        if token.isdigit():
+            parts.append(int(token))
+        else:
+            digits = "".join(ch for ch in token if ch.isdigit())
+            if digits:
+                parts.append(int(digits))
+            break
+    return tuple(parts)
+
+exact = {
+    "fastapi": "0.115.6",
+    "uvicorn": "0.30.6",
+    "python-multipart": "0.0.9",
+}
+minimum = {
+    "PyYAML": "6.0.1",
+    "silero-vad": "5.0.0",
+    "numpy": "1.24.0",
+}
+present = ("torch",)
+
+for package, expected in exact.items():
+    if md.version(package) != expected:
+        raise SystemExit(1)
+for package, minimum_version in minimum.items():
+    if version_tuple(md.version(package)) < version_tuple(minimum_version):
+        raise SystemExit(1)
+for package in present:
+    md.version(package)
+PY
+  then
+    echo "UI dependencies missing or stale; installing recorder dependencies"
+    install_ui_deps
+  fi
 fi
 
 UVICORN="$VENV_DIR/bin/uvicorn"
 if [[ ! -x "$UVICORN" ]]; then
-  "$PY" -m pip install -r requirements-ui.txt
+  install_ui_deps
 fi
 
 echo "Launching http://127.0.0.1:$PORT"
