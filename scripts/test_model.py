@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+from calibrate_model import prediction_score_series
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run an openWakeWord model against a WAV file.")
@@ -26,11 +28,7 @@ def main() -> int:
     result = model.predict_clip(str(wav_path))
 
     serializable = {}
-    for key, value in result.items():
-        try:
-            values = value.tolist()
-        except AttributeError:
-            values = value
+    for key, values in prediction_score_series(result).items():
         serializable[key] = {
             "max": float(max(values)) if values else 0.0,
             "frames": values,

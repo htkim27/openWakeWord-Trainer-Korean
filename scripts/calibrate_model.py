@@ -79,6 +79,49 @@ def threshold_values(minimum: float, maximum: float, step: float) -> list[float]
     return values
 
 
+def score_values(raw_values: Any) -> list[float]:
+    if hasattr(raw_values, "tolist"):
+        raw_values = raw_values.tolist()
+    if isinstance(raw_values, dict):
+        values: list[float] = []
+        for nested_value in raw_values.values():
+            values.extend(score_values(nested_value))
+        return values
+    if isinstance(raw_values, (list, tuple)):
+        values = []
+        for item in raw_values:
+            values.extend(score_values(item))
+        return values
+    try:
+        return [float(raw_values)]
+    except Exception:
+        return []
+
+
+def prediction_score_series(result: Any) -> dict[str, list[float]]:
+    series: dict[str, list[float]] = {}
+
+    def add(label: Any, value: Any) -> None:
+        label_text = str(label or "").strip()
+        if not label_text:
+            return
+        values = score_values(value)
+        if values:
+            series.setdefault(label_text, []).extend(values)
+
+    if isinstance(result, dict):
+        for raw_label, raw_values in result.items():
+            add(raw_label, raw_values)
+    elif isinstance(result, (list, tuple)):
+        for item in result:
+            if isinstance(item, dict):
+                for raw_label, raw_values in item.items():
+                    add(raw_label, raw_values)
+            else:
+                add("score", item)
+    return series
+
+
 def score_wavs(model: Any, wavs: list[Path], label: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for ndx, wav_path in enumerate(wavs, start=1):
@@ -90,20 +133,12 @@ def score_wavs(model: Any, wavs: list[Path], label: str) -> list[dict[str, Any]]
         best_label = ""
         best_frames: list[float] = []
         best_score = 0.0
-        if isinstance(result, dict):
-            for raw_label, raw_values in result.items():
-                try:
-                    values = [float(item) for item in raw_values.tolist()]
-                except AttributeError:
-                    try:
-                        values = [float(item) for item in raw_values]
-                    except TypeError:
-                        values = [float(raw_values)]
-                max_score = max(values) if values else 0.0
-                if max_score >= best_score:
-                    best_label = str(raw_label)
-                    best_frames = values
-                    best_score = float(max_score)
+        for raw_label, values in prediction_score_series(result).items():
+            max_score = max(values) if values else 0.0
+            if max_score >= best_score:
+                best_label = str(raw_label)
+                best_frames = values
+                best_score = float(max_score)
         rows.append(
             {
                 "path": str(wav_path),
@@ -250,6 +285,8 @@ def main() -> int:
     negative_scores = [float(row.get("max_score") or 0.0) for row in negatives]
     positive_scores = [float(row.get("max_score") or 0.0) for row in positives]
     recommended_row = next((row for row in metrics if float(row["threshold"]) == recommended_threshold), {})
+    recommended_recall = recommended_row.get("positive_recall") if recommended_row else None
+    recall_ready = recommended_recall is None or float(recommended_recall or 0.0) >= max(0.0, min(1.0, args.min_positive_recall))
     calibration = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "model": str(model_path),
@@ -261,6 +298,7 @@ def main() -> int:
             recommended_row
             and int(recommended_row.get("false_positive_clips") or 0) == 0
             and recommended_threshold < args.max_threshold
+            and recall_ready
         ),
         "positive_clip_count": len(positives),
         "negative_clip_count": len(negatives),
