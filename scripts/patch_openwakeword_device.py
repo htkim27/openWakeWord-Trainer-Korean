@@ -47,6 +47,21 @@ TRAIN_LOADER_PATCHED = '''        n_cpus = os.cpu_count()
         if sys.platform == "darwin":
             n_cpus = 0
         n_cpus = int(os.environ.get("OWW_TRAIN_NUM_WORKERS", n_cpus))
+        prefetch_factor = max(1, int(os.environ.get("OWW_TRAIN_PREFETCH_FACTOR", "2")))
+        train_loader_kwargs = {"batch_size": None, "num_workers": n_cpus}
+        if n_cpus > 0:
+            train_loader_kwargs["prefetch_factor"] = prefetch_factor
+        X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
+                                              **train_loader_kwargs)'''
+
+TRAIN_LOADER_PATCHED_LEGACY = '''        n_cpus = os.cpu_count()
+        if n_cpus is None:
+            n_cpus = 1
+        else:
+            n_cpus = n_cpus//2
+        if sys.platform == "darwin":
+            n_cpus = 0
+        n_cpus = int(os.environ.get("OWW_TRAIN_NUM_WORKERS", n_cpus))
         train_loader_kwargs = {"batch_size": None, "num_workers": n_cpus}
         if n_cpus > 0:
             train_loader_kwargs["prefetch_factor"] = 16
@@ -150,8 +165,12 @@ def main() -> int:
     else:
         print(f"openWakeWord store_true defaults already patched: {train_py}", flush=True)
 
-    if "OWW_TRAIN_NUM_WORKERS" in text:
+    if "OWW_TRAIN_PREFETCH_FACTOR" in text:
         print(f"Mac DataLoader worker patch already present: {train_py}", flush=True)
+    elif TRAIN_LOADER_PATCHED_LEGACY in text:
+        text = text.replace(TRAIN_LOADER_PATCHED_LEGACY, TRAIN_LOADER_PATCHED)
+        changed = True
+        print(f"Updated openWakeWord training DataLoader worker prefetch patch: {train_py}", flush=True)
     else:
         if TRAIN_LOADER_ORIGINAL not in text:
             raise SystemExit(f"Could not find upstream training DataLoader block in {train_py}")

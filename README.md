@@ -120,6 +120,7 @@ Run:
 ```bash
 docker run --rm -it \
   --gpus all \
+  --shm-size=8g \
   -p 8791:8791 \
   -v "$(pwd)/data":/data \
   openwakeword-trainer
@@ -134,6 +135,8 @@ http://localhost:8791
 The Docker image follows the smaller microWakeWord trainer pattern: it ships only the app, Python, and system tools. UI and training dependencies are installed into `/data/.recorder-venv` and `/data/.venv` on first run, so rebuilding the image stays small and the heavy Python stack is cached in your mounted `data/` directory.
 
 By default Docker sets `OWW_TORCH_CUDA=cu124`, so the training venv installs the CUDA 12.4 PyTorch wheels and the upstream trainer should select `cuda:0` when run with `--gpus all`. For a CPU-only container, pass `-e OWW_FORCE_CPU=1 -e OWW_TORCH_CUDA=`.
+
+If training fails with `Unexpected bus error encountered in worker`, Docker's shared-memory mount is too small. This is separate from free space in `/data`; PyTorch DataLoader workers use `/dev/shm` while passing batches between worker processes. Keep `--shm-size=8g` on the run command, or use `--ipc=host` on a trusted local machine. The image also defaults to `OWW_TRAIN_NUM_WORKERS=2` and `OWW_TRAIN_PREFETCH_FACTOR=2` to avoid overfilling shared memory; raise those only after confirming training stays real-time and stable.
 
 ## Apple Silicon Notes
 
