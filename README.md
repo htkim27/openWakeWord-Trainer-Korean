@@ -25,6 +25,8 @@ openWakeWord의 기본 합성 파이프라인은 Piper TTS를 사용하지만 �
 - Python 3.10–3.12 (`3.11` 권장)
 - [`uv`](https://docs.astral.sh/uv/)
 - NVIDIA GPU와 CUDA 권장
+- RTX 50 시리즈를 포함한 최신 GPU를 위해 Linux/Windows에서는 PyTorch 2.13 CUDA 13.0 wheel 사용
+- torchaudio는 현재 최신 공식 CUDA wheel인 2.11을 사용하며 Torch 2.13과 import 테스트합니다.
 - 저장 공간 30 GB 이상, RAM 16 GB 이상 권장
 - GPU worker마다 OmniVoice 모델 하나가 로드됩니다. 24 GB VRAM급 단일 GPU에서는 먼저
   `--workers 1`로 확인하고, 여러 GPU는 `--devices cuda:0,cuda:1`처럼 분산하세요.

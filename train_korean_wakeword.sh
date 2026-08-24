@@ -26,7 +26,7 @@ uv venv --python "${PYTHON_VERSION:-3.11}" --allow-existing .venv
 uv sync --locked --python .venv/bin/python
 touch .venv/.train_deps_installed
 if [[ -n "${OWW_TORCH_CUDA:-}" && "${OWW_FORCE_CPU:-0}" != 1 ]]; then
-  printf '%s\n' "${OWW_TORCH_VERSION:-2.6.0}+${OWW_TORCH_CUDA}" > .venv/.train_deps_key
+  printf '%s\n' "${OWW_TORCH_VERSION:-2.13.0}+${OWW_TORCH_CUDA}" > .venv/.train_deps_key
 else
   printf '%s\n' cpu > .venv/.train_deps_key
 fi
