@@ -6,6 +6,7 @@ import argparse
 import itertools
 import multiprocessing as mp
 import random
+import re
 import sys
 import time
 import uuid
@@ -30,6 +31,12 @@ class Task(NamedTuple):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate 16 kHz Korean wake-word clips with OmniVoice.")
     parser.add_argument("target", help='Target wake word, for example "오둥아"')
+    parser.add_argument(
+        "--positive-variation",
+        action="append",
+        default=[],
+        help='Additional positive prosody text; repeat it, for example "오둥아!" and "오둥아."',
+    )
     parser.add_argument("--negatives", required=True, help="Comma-separated hard negative phrases")
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--devices", default="auto", help='For example "cuda:0,cuda:1", "mps", or "cpu"')
@@ -51,9 +58,13 @@ def spacing_variants(text: str) -> list[str]:
     compact = "".join(text.split())
     if not compact:
         raise ValueError("Text must not be empty")
+    match = re.fullmatch(r"(.+?)([^\w가-힣]*)", compact)
+    assert match is not None
+    spoken, punctuation = match.groups()
     return [
-        "".join(char + (" " if i < len(compact) - 1 and mask[i] else "") for i, char in enumerate(compact))
-        for mask in itertools.product((False, True), repeat=max(0, len(compact) - 1))
+        "".join(char + (" " if i < len(spoken) - 1 and mask[i] else "") for i, char in enumerate(spoken))
+        + punctuation
+        for mask in itertools.product((False, True), repeat=max(0, len(spoken) - 1))
     ]
 
 
@@ -134,7 +145,8 @@ def main() -> int:
     negatives = [item.strip() for item in args.negatives.split(",") if item.strip()]
     if not negatives:
         raise SystemExit("--negatives must contain at least one phrase")
-    positive_texts = spacing_variants(args.target)
+    positive_phrases = [args.target, *args.positive_variation]
+    positive_texts = sorted({variant for phrase in positive_phrases for variant in spacing_variants(phrase)})
     negative_texts = sorted({variant for word in negatives for variant in spacing_variants(word)})
     base = args.project_root.resolve() / DATASET_PATH  # Deliberately fixed: see README.
     specs = {

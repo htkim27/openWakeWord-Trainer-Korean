@@ -52,6 +52,14 @@ positive train 20,000개, positive test 2,000개, negative train 20,000개, nega
   --workers 2 --devices cuda:0,cuda:1
 ```
 
+상승형/하강형 운율을 함께 학습하는 예:
+
+```bash
+./train_korean_wakeword.sh "오둥아" "오동아,우동아,오징어" \
+  --positive-variation "오둥아!" \
+  --positive-variation "오둥아."
+```
+
 생성기만 작은 수량으로 확인할 수도 있습니다.
 
 ```bash
