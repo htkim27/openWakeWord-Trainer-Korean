@@ -35,8 +35,8 @@ CPU에서도 실행할 수 있지만 44,000개 합성에는 매우 오랜 시간
 ## 빠른 시작
 
 ```bash
-git clone https://github.com/htkim27/openWakeWord-Trainer.git
-cd openWakeWord-Trainer
+git clone https://github.com/htkim27/openWakeWord-Trainer-Korean.git
+cd openWakeWord-Trainer-Korean
 ./train_korean_wakeword.sh "오둥아" "오동아,우동아,오징어"
 ```
 
