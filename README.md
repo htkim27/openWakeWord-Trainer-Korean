@@ -1,232 +1,104 @@
-<div align="center">
-  <a href="https://taterassistant.com">
-    <img src="images/tater-repo-logo.png" alt="openWakeWord Trainer" width="460"/>
-  </a>
-</div>
-<h3 align="center">
-  <a href="https://taterassistant.com">taterassistant.com</a>
-</h3>
+# Korean openWakeWord Trainer
 
-# openWakeWord Trainer for Apple Silicon and NVIDIA
+[openWakeWord](https://github.com/dscripka/openWakeWord)의 학습 파이프라인과
+[k2-fsa/OmniVoice](https://github.com/k2-fsa/OmniVoice)를 결합해 한국어 웨이크워드
+모델을 만드는 프로젝트입니다.
 
-Train custom openWakeWord models from a local web UI or CLI, with ONNX as the primary artifact, optional TFLite export when the upstream converter succeeds, and optional verifier training from real positive and false-wake clips.
+openWakeWord의 기본 합성 파이프라인은 Piper TTS를 사용하지만 한국어 음성이 제공되지
+않습니다. 이 프로젝트는 OmniVoice로 한국어 positive/hard-negative 음성 44,000개를 먼저
+병렬 생성하고, 완성된 데이터를 openWakeWord의 augmentation 및 classifier 학습 단계에
+전달해 이 제약을 우회합니다.
 
-This project mirrors the shape of the Tater microWakeWord trainers, but the model strategy is different:
+## 핵심 동작
 
-- openWakeWord runs a shared mel/embedding backbone and a small wake-word classifier.
-- The best portable classifier artifact is ONNX.
-- Real captured samples are most useful as a second-stage verifier for reducing false wakes in your actual room, mic, and voice setup.
-- Full synthetic model training is still happiest on Linux/NVIDIA. Apple Silicon can run the UI, curate samples, test ONNX models, and run smaller native training jobs when dependencies cooperate.
+- 타겟 단어와 쉼표로 구분한 유사 발음 단어를 CLI에서 입력합니다.
+- `오둥아`, `오 둥아`, `오둥 아`, `오 둥 아`처럼 음절 경계의 띄어쓰기 운율을 자동 조합합니다.
+- 성별, 연령, 음높이, 억양/속삭임을 무작위로 조합해 다양한 음색을 생성합니다.
+- voice-design 조합이 빈 오디오를 반환하거나 실패하면 OmniVoice auto-voice로 재시도합니다.
+- openWakeWord가 한글 모델명을 `wakeword`로 sanitize하는 동작에 맞춰, WAV는 반드시
+  `output/wakeword/wakeword/{positive,negative}_{train,test}` 아래에 생성됩니다.
+- 중단 후 같은 명령을 다시 실행하면 부족한 WAV만 이어서 생성합니다.
 
-## Why This Path
+## 요구 사항
 
-The official openWakeWord docs still recommend the automated training notebook for production-ish models, and describe the quick Colab as convenient but weaker in some deployments. The automated flow generates target/adversarial clips, augments them with room/background audio, trains against large negative feature sets, and exports ONNX/TFLite.
+- Linux 권장 (Ubuntu 22.04 이상)
+- Python 3.10–3.12 (`3.11` 권장)
+- [`uv`](https://docs.astral.sh/uv/)
+- NVIDIA GPU와 CUDA 권장
+- 저장 공간 30 GB 이상, RAM 16 GB 이상 권장
+- GPU worker마다 OmniVoice 모델 하나가 로드됩니다. 24 GB VRAM급 단일 GPU에서는 먼저
+  `--workers 1`로 확인하고, 여러 GPU는 `--devices cuda:0,cuda:1`처럼 분산하세요.
 
-Useful upstream references:
+CPU에서도 실행할 수 있지만 44,000개 합성에는 매우 오랜 시간이 걸립니다. VRAM이
+부족하면 worker 수를 줄이십시오.
 
-- [openWakeWord README](https://github.com/dscripka/openWakeWord#training-new-models)
-- [official automatic training notebook](https://github.com/dscripka/openWakeWord/blob/main/notebooks/automatic_model_training.ipynb)
-- [official training config](https://github.com/dscripka/openWakeWord/blob/main/examples/custom_model.yml)
-- [piper-sample-generator](https://github.com/rhasspy/piper-sample-generator)
-
-## Quick Start: Web UI
+## 빠른 시작
 
 ```bash
-./run.sh
+git clone https://github.com/htkim27/openWakeWord-Trainer.git
+cd openWakeWord-Trainer
+./train_korean_wakeword.sh "오둥아" "오동아,우동아,오징어"
 ```
 
-Open:
+이 한 명령이 lockfile 기반 `.venv` 구성, 패키지 설치, OmniVoice 모델 다운로드, 44,000개 클립 생성,
+openWakeWord 데이터 증강/학습, artifact export를 차례로 수행합니다. 기본 데이터 구성은
+positive train 20,000개, positive test 2,000개, negative train 20,000개, negative test
+2,000개입니다. 최종 모델은 `models/오둥아.onnx`에 생성됩니다.
+
+여러 GPU를 사용하는 예:
+
+```bash
+./train_korean_wakeword.sh "오둥아" "오동아,우동아,오징어" \
+  --workers 2 --devices cuda:0,cuda:1
+```
+
+생성기만 작은 수량으로 확인할 수도 있습니다.
+
+```bash
+uv run python generate_korean_dataset.py "오둥아" \
+  --negatives "오동아,우동아" --workers 1 \
+  --positive-train 2 --positive-test 2 \
+  --negative-train 2 --negative-test 2
+```
+
+> 작은 smoke test 뒤 기본 명령을 실행하면 각 split을 44,000개 기본 구성까지 채웁니다.
+
+## 프로젝트 구조
 
 ```text
-http://127.0.0.1:8791
+.
+├── generate_korean_dataset.py     # OmniVoice 병렬 데이터 생성기
+├── train_korean_wakeword.sh       # uv 설정 → 생성 → 학습 → export
+├── train_openwakeword.sh          # 원본 trainer 환경/자산 준비 래퍼
+├── scripts/
+│   └── train_openwakeword.py      # config 생성 및 upstream train.py 호출
+├── pyproject.toml
+├── requirements-train.txt
+├── output/
+│   └── wakeword/
+│       └── wakeword/
+│           ├── positive_train/
+│           ├── positive_test/
+│           ├── negative_train/
+│           └── negative_test/
+└── models/
+    ├── 오둥아.onnx
+    ├── 오둥아.onnx.data           # 생성되는 모델 형식일 때
+    ├── 오둥아.tflite              # 변환 성공 시
+    └── 오둥아.json
 ```
 
-The web UI stores:
+`scripts/train_openwakeword.py`는 `vendor/openwakeword/openwakeword/train.py`를 직접 호출합니다.
+사전 생성한 네 폴더가 목표 수량을 이미 만족하므로 영어 Piper TTS 생성은 `--skip-generate`로
+건너뛰고, augmentation과 feature 생성부터 실행합니다.
 
-```text
-personal_samples/       real positive wake-word clips
-negative_samples/       reviewed false wakes and hard negatives
-captured_audio/         inbox for device uploads
-trained_wake_words/     exported .onnx, .tflite, .pkl, and metadata files
-logs/                   training logs
-```
+## 환경 변수
 
-## Train From The CLI
+- `PYTHON_VERSION=3.11`: `uv`가 사용할 Python 버전
+- `OWW_TORCH_CUDA=cu124`: CUDA PyTorch wheel 선택
+- `OWW_NEGATIVE_FEATURES=skip`: 대용량 negative feature 다운로드 생략(빠른 시험용)
+- `OWW_DOWNLOAD_BACKGROUND=0`: background dataset 다운로드 생략
+- `HF_TOKEN`: Hugging Face 인증이 필요한 환경의 토큰
 
-```bash
-./train_openwakeword.sh "hey tater"
-```
-
-Python 3.10+ is required for training because openWakeWord 0.6.0 declares `python_requires >=3.10`; Python 3.11 is recommended. Set `OWW_PYTHON_BIN=/path/to/python3.11` if needed.
-
-On Apple Silicon:
-
-```bash
-brew install python@3.11
-rm -rf .venv
-OWW_PYTHON_BIN=/opt/homebrew/bin/python3.11 ./train_openwakeword.sh "hey tater"
-```
-
-Balanced defaults:
-
-```bash
-./train_openwakeword.sh "hey tater" \
-  --samples 20000 \
-  --validation-samples 2000 \
-  --steps 50000 \
-  --custom-negative-phrase "potato"
-```
-
-Adversarial negative clips default to `tts_batch_size // 7`, matching upstream openWakeWord. On Apple Silicon MPS you can lower the divisor for larger, faster negative batches:
-
-```bash
-./train_openwakeword.sh "hey tater" \
-  --tts-batch-size 50 \
-  --negative-tts-batch-divisor 4
-```
-
-Fast smoke test:
-
-```bash
-OWW_NEGATIVE_FEATURES=skip ./train_openwakeword.sh "hey tater" \
-  --samples 1000 \
-  --validation-samples 300 \
-  --steps 3000
-```
-
-Best-result run:
-
-```bash
-OWW_NEGATIVE_FEATURES=full ./train_openwakeword.sh "hey tater" \
-  --samples 50000 \
-  --validation-samples 5000 \
-  --steps 80000 \
-  --target-fp-per-hour 0.2 \
-  --max-negative-weight 1500
-```
-
-The first full run can download many GB of data, including the openWakeWord negative feature file. Keep the `data/` directory around so later runs reuse it. Background audio downloads try the streamed FMA dataset first; if HuggingFace's FMA loader cannot stream on your machine, the trainer generates local 16 kHz fallback background clips and continues. Set `OWW_BACKGROUND_ALLOW_FULL_FMA=1` only if you want to allow the full 7.2 GiB FMA small download.
-
-## NVIDIA Docker
-
-Build:
-
-```bash
-docker build -f dockerfile -t openwakeword-trainer .
-```
-
-Run:
-
-```bash
-docker run --rm -it \
-  --gpus all \
-  --shm-size=8g \
-  -p 8791:8791 \
-  -v "$(pwd)/data":/data \
-  openwakeword-trainer
-```
-
-Open:
-
-```text
-http://localhost:8791
-```
-
-The Docker image follows the smaller microWakeWord trainer pattern: it ships only the app, Python, and system tools. UI and training dependencies are installed into `/data/.recorder-venv` and `/data/.venv` on first run, so rebuilding the image stays small and the heavy Python stack is cached in your mounted `data/` directory.
-
-By default Docker sets `OWW_TORCH_CUDA=cu124`, so the training venv installs the CUDA 12.4 PyTorch wheels and the upstream trainer should select `cuda:0` when run with `--gpus all`. For a CPU-only container, pass `-e OWW_FORCE_CPU=1 -e OWW_TORCH_CUDA=`.
-
-If training fails with `Unexpected bus error encountered in worker`, Docker's shared-memory mount is too small. This is separate from free space in `/data`; PyTorch DataLoader workers use `/dev/shm` while passing batches between worker processes. Keep `--shm-size=8g` on the run command, or use `--ipc=host` on a trusted local machine. The image also defaults to `OWW_TRAIN_NUM_WORKERS=2` and `OWW_TRAIN_PREFETCH_FACTOR=2` to avoid overfilling shared memory; raise those only after confirming training stays real-time and stable.
-
-## Apple Silicon Notes
-
-Native Apple training is supported as a best-effort path. It uses the same scripts, creates `.venv`, installs the Python stack, and runs the upstream openWakeWord trainer. The launcher patches the vendored trainer so PyTorch selects Apple MPS when available, and Piper sample generation now uses `OWW_PIPER_DEVICE=auto` so it prefers CUDA/MPS before falling back to CPU. Set `OWW_ENABLE_MPS=0`, `OWW_PIPER_DEVICE=cpu`, or enable `force CPU` in the UI if an operation falls back poorly.
-
-Because upstream automated training historically targeted Linux/Piper, NVIDIA Docker is still the recommended path for the big final run.
-
-Apple is excellent for:
-
-- running the local trainer UI
-- collecting and reviewing clips
-- testing ONNX models
-- training verifier models from personal/negative clips
-- short smoke training runs on CPU or MPS
-
-## Captured Audio Endpoint
-
-Devices can upload raw 16 kHz mono signed 16-bit PCM to:
-
-```text
-POST /api/upload_captured_audio_raw
-```
-
-Uploaded clips land in `captured_audio/`. In the UI, approve good wake-word examples into `personal_samples/` or mark false wakes into `negative_samples/`.
-
-## Verifier Training
-
-After a base `.onnx` model exists, train a verifier from your reviewed clips:
-
-```bash
-.venv/bin/python scripts/train_verifier.py \
-  --base-model trained_wake_words/hey_tater.onnx \
-  --positive-dir personal_samples \
-  --negative-dir negative_samples \
-  --output trained_wake_words/hey_tater_verifier.pkl
-```
-
-This follows openWakeWord's recommended second-stage filter idea: keep the general wake-word model broad, then use real clips to make your deployment less trigger-happy.
-
-## Test A Model
-
-```bash
-.venv/bin/python scripts/test_model.py \
-  --model trained_wake_words/hey_tater.onnx \
-  --wav personal_samples/example.wav
-```
-
-For a deployment check, calibrate the model against reviewed false wakes and generated negative test clips:
-
-```bash
-.venv/bin/python scripts/calibrate_model.py \
-  --model trained_wake_words/hey_tater.onnx \
-  --positive-dir personal_samples \
-  --negative-dir negative_samples \
-  --negative-dir output/hey_tater/hey_tater/negative_test \
-  --metadata-json trained_wake_words/hey_tater.json
-```
-
-The trainer runs this automatically after a successful ONNX export when negative clips are available. Use the reported `recommended_threshold` and `recommended_patience` in your runtime before deploying the model broadly.
-
-For live microphone testing, use the upstream openWakeWord examples after setup:
-
-```bash
-.venv/bin/python vendor/openwakeword/examples/detect_from_microphone.py \
-  --model-path trained_wake_words/hey_tater.onnx
-```
-
-## Output
-
-Successful training syncs artifacts into:
-
-```text
-trained_wake_words/<model>.onnx
-trained_wake_words/<model>.tflite       # when upstream conversion succeeds
-trained_wake_words/<model>.json         # local metadata
-trained_wake_words/<model>_verifier.pkl # optional
-```
-
-## Important Caveats
-
-- openWakeWord's published pretrained/custom training flow is strongest for English.
-- Threshold tuning matters. The default runtime threshold of `0.5` is a starting point, not a promise.
-- If a custom model triggers repeatedly on silence or room audio, immediately raise the runtime threshold near `0.95`, increase patience to `3` or `4`, and collect those false-wake clips into `negative_samples/` before retraining or training a verifier.
-- Reviewed false wakes are valuable. Use them for verifier training and as custom negative phrases when they are phrase-like.
-- Big negative datasets improve false-positive behavior, but they cost disk and time.
-
-## Credits
-
-Built around:
-
-- [openWakeWord](https://github.com/dscripka/openWakeWord)
-- [piper-sample-generator](https://github.com/rhasspy/piper-sample-generator)
-- the existing Tater microWakeWord trainer workflow
+모델과 데이터셋의 라이선스 및 이용 조건은 각 upstream 프로젝트와 체크포인트의 조건을
+따릅니다. 합성 음성을 사칭, 사기 또는 동의 없는 음성 복제에 사용하지 마십시오.

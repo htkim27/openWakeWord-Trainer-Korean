@@ -17,6 +17,7 @@ negative_samples/
 captured_audio/
 trim_history/
 trained_wake_words/
+models/
 
 *.onnx
 *.onnx.data
