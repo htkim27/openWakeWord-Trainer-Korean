@@ -157,14 +157,24 @@ def main() -> int:
     }
     for split in specs:
         (base / split).mkdir(parents=True, exist_ok=True)
+    tasks_by_split = {
+        split: missing_tasks(base / split, wanted, texts)
+        for split, (wanted, texts) in specs.items()
+    }
+    for split, tasks in tasks_by_split.items():
+        wanted = specs[split][0]
+        print(f"{split}: {wanted - len(tasks)}/{wanted} present; generating {len(tasks)}", flush=True)
+    if not any(tasks_by_split.values()):
+        print(f"Dataset already complete: {base}")
+        return 0
+
     devices = resolve_devices(args.devices)
     print(f"Fixed dataset path: {base}\nWorkers: {args.workers}; devices: {', '.join(devices)}", flush=True)
     started, completed = time.monotonic(), 0
     with mp.get_context("spawn").Pool(args.workers, worker_init, (devices,)) as pool:
         for split, (wanted, texts) in specs.items():
             directory = base / split
-            tasks = missing_tasks(directory, wanted, texts)
-            print(f"{split}: {wanted - len(tasks)}/{wanted} present; generating {len(tasks)}", flush=True)
+            tasks = tasks_by_split[split]
             for ok, detail in pool.imap_unordered(worker_task, tasks):
                 if not ok:
                     print(f"WARNING: {detail}", file=sys.stderr, flush=True)
