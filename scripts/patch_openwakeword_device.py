@@ -116,6 +116,20 @@ OUTPUT_TYPE_REPLACEMENTS = (
     ),
 )
 
+TORCHAUDIO_IMPORT_ORIGINAL = """from numpy.lib.format import open_memmap
+from speechbrain.dataio.dataio import read_audio
+from speechbrain.processing.signal_processing import reverberate
+import torchaudio"""
+TORCHAUDIO_IMPORT_PATCHED = """from numpy.lib.format import open_memmap
+import torchaudio
+
+# SpeechBrain 1.0.x still probes this API, which was removed in torchaudio 2.11.
+if not hasattr(torchaudio, \"list_audio_backends\"):
+    torchaudio.list_audio_backends = lambda: []
+
+from speechbrain.dataio.dataio import read_audio
+from speechbrain.processing.signal_processing import reverberate"""
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -187,6 +201,15 @@ def main() -> int:
 
     data_text = data_py.read_text(encoding="utf-8")
     data_changed = False
+    if "torchaudio.list_audio_backends = lambda: []" in data_text:
+        print(f"SpeechBrain/torchaudio compatibility patch already present: {data_py}", flush=True)
+    else:
+        if TORCHAUDIO_IMPORT_ORIGINAL not in data_text:
+            raise SystemExit(f"Could not find upstream SpeechBrain import block in {data_py}")
+        data_text = data_text.replace(TORCHAUDIO_IMPORT_ORIGINAL, TORCHAUDIO_IMPORT_PATCHED)
+        data_changed = True
+        print(f"Patched SpeechBrain compatibility for torchaudio 2.11+: {data_py}", flush=True)
+
     if "torchaudio.functional.resample(clip_data" in data_text:
         print(f"Augmentation resample patch already present: {data_py}", flush=True)
     else:
