@@ -127,6 +127,22 @@ import torchaudio
 if not hasattr(torchaudio, \"list_audio_backends\"):
     torchaudio.list_audio_backends = lambda: []
 
+if not hasattr(torchaudio, \"info\"):
+    import soundfile as _soundfile
+    from types import SimpleNamespace as _SimpleNamespace
+
+    def _openwakeword_audio_info(path):
+        metadata = _soundfile.info(path)
+        return _SimpleNamespace(
+            sample_rate=metadata.samplerate,
+            num_frames=metadata.frames,
+            num_channels=metadata.channels,
+            bits_per_sample=0,
+            encoding=metadata.subtype,
+        )
+
+    torchaudio.info = _openwakeword_audio_info
+
 from speechbrain.dataio.dataio import read_audio
 from speechbrain.processing.signal_processing import reverberate"""
 
@@ -209,6 +225,33 @@ def main() -> int:
         data_text = data_text.replace(TORCHAUDIO_IMPORT_ORIGINAL, TORCHAUDIO_IMPORT_PATCHED)
         data_changed = True
         print(f"Patched SpeechBrain compatibility for torchaudio 2.11+: {data_py}", flush=True)
+
+    if "def _openwakeword_audio_info(path):" in data_text:
+        print(f"torchaudio metadata compatibility patch already present: {data_py}", flush=True)
+    else:
+        marker = "    torchaudio.list_audio_backends = lambda: []\n"
+        info_patch = """
+
+if not hasattr(torchaudio, \"info\"):
+    import soundfile as _soundfile
+    from types import SimpleNamespace as _SimpleNamespace
+
+    def _openwakeword_audio_info(path):
+        metadata = _soundfile.info(path)
+        return _SimpleNamespace(
+            sample_rate=metadata.samplerate,
+            num_frames=metadata.frames,
+            num_channels=metadata.channels,
+            bits_per_sample=0,
+            encoding=metadata.subtype,
+        )
+
+    torchaudio.info = _openwakeword_audio_info"""
+        if marker not in data_text:
+            raise SystemExit(f"Could not find torchaudio compatibility marker in {data_py}")
+        data_text = data_text.replace(marker, marker + info_patch + "\n")
+        data_changed = True
+        print(f"Patched torchaudio metadata compatibility: {data_py}", flush=True)
 
     if "torchaudio.functional.resample(clip_data" in data_text:
         print(f"Augmentation resample patch already present: {data_py}", flush=True)
